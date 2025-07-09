@@ -1,5 +1,6 @@
 # Archivos locales de desarrollo
 .env
+.streamlit/secrets.toml
 *.pkl
 database.csv
 images/
@@ -9,6 +10,7 @@ __pycache__/
 !database_manager.py
 !requirements.txt
 !.env.example
+!.streamlit/secrets.toml.example
 !README_NEW.md
 *.pyc
 *.pyo

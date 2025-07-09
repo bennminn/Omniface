@@ -39,6 +39,38 @@ CREATE POLICY "Permitir todas las operaciones" ON personas
 
 4. Copia tu URL del proyecto y Anon Key
 
+## 🛠️ Desarrollo Local
+
+### Requisitos
+
+```bash
+pip install -r requirements.txt
+```
+
+### Configuración Local
+
+Tienes dos opciones para configurar las credenciales:
+
+**Opción 1: Usando .env (recomendado para variables de entorno)**
+1. Copia `.env.example` a `.env`
+2. Completa las credenciales de Supabase
+
+**Opción 2: Usando secrets.toml (nativo de Streamlit)**
+1. Copia `.streamlit/secrets.toml.example` a `.streamlit/secrets.toml`
+2. Completa las credenciales:
+
+```toml
+[supabase]
+url = "tu-url-de-supabase"
+key = "tu-anon-key"
+```
+
+### Ejecutar la aplicación
+
+```bash
+streamlit run OmnifaceApp.py
+```
+
 ### Configuración en Streamlit Cloud
 
 1. Sube este repositorio a GitHub
@@ -54,25 +86,7 @@ key = "tu_supabase_anon_key_aqui"
 
 5. ¡Deploy automático!
 
-## 🛠️ Desarrollo Local
-
-### Requisitos
-
-```bash
-pip install -r requirements.txt
-```
-
-### Configuración Local
-
-1. Copia `.env.example` a `.env`
-2. Completa las credenciales de Supabase
-3. Ejecuta:
-
-```bash
-streamlit run OmnifaceApp.py
-```
-
-## 📊 Características Técnicas
+##  Características Técnicas
 
 - **Base de datos:** Supabase (PostgreSQL)
 - **Almacenamiento:** Imágenes en Base64
