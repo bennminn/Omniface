@@ -534,8 +534,9 @@ st.markdown("---")
 st.markdown(
     """
     <div style='text-align: center; color: #666;'>
-        <p>🎯 OmniFace v1.0 - Sistema de Reconocimiento Facial</p>
-        <p>Desarrollado con ❤️ usando Streamlit</p>
+        <p>🎯 OmniFace v2.0 - Sistema de Reconocimiento Facial</p>
+        <p>Desarrollado con ❤️ usando Streamlit + Supabase</p>
+        <p>🌐 <a href="https://github.com/bennminn/Omniface" target="_blank">Ver código en GitHub</a></p>
     </div>
     """,
     unsafe_allow_html=True
