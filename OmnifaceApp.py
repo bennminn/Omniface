@@ -218,7 +218,7 @@ def recognize_face(image, known_encodings):
     
     # Usar tolerancia más estricta para mayor precisión
     tolerance = 0.25  # Más estricto que 0.4
-    min_confidence = 85  # Confianza mínima requerida
+    min_confidence = 90  # Confianza mínima requerida
     
     best_match = None
     best_confidence = 0
