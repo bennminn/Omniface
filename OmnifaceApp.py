@@ -545,7 +545,7 @@ elif page == "📊 Estadísticas":
     - **Base de datos:** Supabase (PostgreSQL)
     - **Almacenamiento:** Cloud (persistente)
     - **Tolerancia:** 0.25 (alta precisión)
-    - **Confianza mínima:** 85%
+    - **Confianza mínima:** 90%
     - **Formatos soportados:** JPG, JPEG, PNG
     - **Deploy:** Compatible con Streamlit Cloud
     """)
