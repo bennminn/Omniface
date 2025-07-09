@@ -216,16 +216,33 @@ def recognize_face(image, known_encodings):
     if face_encoding is None:
         return None, None
     
-    # Comparar con rostros conocidos usando tolerancia más permisiva
-    for person_id, known_encoding in known_encodings.items():
-        matches = face_recognition.compare_faces([known_encoding], face_encoding, tolerance=0.4)
-        if matches[0]:
-            # Calcular distancia para obtener confianza
-            distance = face_recognition.face_distance([known_encoding], face_encoding)[0]
-            confidence = max(0, (1 - distance * 2) * 100)  # Convertir distancia a porcentaje
-            return person_id, confidence
+    # Usar tolerancia más estricta para mayor precisión
+    tolerance = 0.25  # Más estricto que 0.4
+    min_confidence = 85  # Confianza mínima requerida
     
-    return None, None
+    best_match = None
+    best_confidence = 0
+    best_person_id = None
+    
+    # Comparar con todos los rostros conocidos y encontrar el mejor match
+    for person_id, known_encoding in known_encodings.items():
+        matches = face_recognition.compare_faces([known_encoding], face_encoding, tolerance=tolerance)
+        
+        if matches[0]:
+            # Calcular distancia y confianza
+            distance = face_recognition.face_distance([known_encoding], face_encoding)[0]
+            confidence = max(0, (1 - distance * 2.5) * 100)  # Fórmula ajustada para mayor precisión
+            
+            # Solo considerar si supera la confianza mínima
+            if confidence >= min_confidence and confidence > best_confidence:
+                best_confidence = confidence
+                best_person_id = person_id
+                best_match = True
+    
+    if best_match:
+        return best_person_id, best_confidence
+    else:
+        return None, None
 
 # Sidebar para navegación
 with st.sidebar:
@@ -459,13 +476,16 @@ elif page == "🎥 Reconocimiento Facial":
                         else:
                             st.warning("⚠️ No se pudo cargar la imagen de referencia")
                         
-                        # Mostrar alerta de éxito
-                        if confidence > 80:
+                        # Mostrar alerta de éxito basada en confianza
+                        if confidence >= 95:
                             st.balloons()
-                        elif confidence > 60:
-                            st.warning("⚠️ Reconocimiento con confianza media")
+                            st.success("🎯 ¡Reconocimiento con confianza muy alta!")
+                        elif confidence >= 90:
+                            st.success("✅ Reconocimiento con confianza alta")
+                        elif confidence >= 85:
+                            st.info("👍 Reconocimiento con confianza aceptable")
                         else:
-                            st.error("❌ Reconocimiento con baja confianza")
+                            st.warning("⚠️ Reconocimiento con confianza baja")
                 else:
                     with col2:
                         st.subheader("❌ No Reconocido")
@@ -524,7 +544,8 @@ elif page == "📊 Estadísticas":
     - **Tecnología:** OpenCV + Supabase
     - **Base de datos:** Supabase (PostgreSQL)
     - **Almacenamiento:** Cloud (persistente)
-    - **Tolerancia:** 0.4 (ajustable)
+    - **Tolerancia:** 0.25 (alta precisión)
+    - **Confianza mínima:** 85%
     - **Formatos soportados:** JPG, JPEG, PNG
     - **Deploy:** Compatible con Streamlit Cloud
     """)
