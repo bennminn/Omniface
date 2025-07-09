@@ -45,39 +45,91 @@ class SupabaseManager:
     def _ensure_tables_exist(self):
         """Asegurar que las tablas existan en Supabase"""
         try:
-            # Verificar si las tablas existen, si no, mostrar instrucciones
+            # Verificar si las tablas existen y son accesibles
             response = self.supabase.table('personas').select('*').limit(1).execute()
+            
+            # Si llegamos aquí, la tabla existe y es accesible
+            st.success("✅ Conexión con Supabase establecida correctamente")
+            
         except Exception as e:
-            st.error("❌ Las tablas de la base de datos no existen")
-            st.info("""
-            📋 **Instrucciones para configurar Supabase:**
+            error_msg = str(e).lower()
             
-            1. Ve a https://supabase.com y crea una cuenta gratuita
-            2. Crea un nuevo proyecto
-            3. Ve a SQL Editor y ejecuta estas consultas:
+            # Verificar diferentes tipos de errores
+            if "relation" in error_msg and "does not exist" in error_msg:
+                self._show_table_creation_instructions("tabla no existe")
+            elif "permission denied" in error_msg or "policy" in error_msg:
+                self._show_permissions_instructions()
+            elif "jwt" in error_msg or "unauthorized" in error_msg:
+                self._show_auth_instructions()
+            else:
+                st.error(f"❌ Error conectando a la base de datos: {e}")
+                self._show_table_creation_instructions("error desconocido")
             
-            ```sql
-            -- Tabla para personas
-            CREATE TABLE personas (
-                id TEXT PRIMARY KEY,
-                nombre TEXT NOT NULL,
-                imagen_base64 TEXT,
-                encoding_data TEXT,
-                fecha_creacion TIMESTAMP DEFAULT NOW()
-            );
-            
-            -- Habilitar RLS (Row Level Security)
-            ALTER TABLE personas ENABLE ROW LEVEL SECURITY;
-            
-            -- Política para permitir todas las operaciones (puedes hacer esto más restrictivo)
-            CREATE POLICY "Permitir todas las operaciones" ON personas
-                FOR ALL USING (true);
-            ```
-            
-            4. Copia tu URL y Anon Key del proyecto
-            5. Configúralos en los secrets de Streamlit o en .env
-            """)
             st.stop()
+    
+    def _show_table_creation_instructions(self, reason=""):
+        """Mostrar instrucciones para crear tablas"""
+        st.error(f"❌ Las tablas de la base de datos no están disponibles ({reason})")
+        st.info("""
+        📋 **Instrucciones para configurar Supabase:**
+        
+        1. Ve a https://supabase.com y accede a tu proyecto
+        2. Ve a SQL Editor y ejecuta estas consultas:
+        
+        ```sql
+        -- Tabla para personas
+        CREATE TABLE IF NOT EXISTS personas (
+            id TEXT PRIMARY KEY,
+            nombre TEXT NOT NULL,
+            imagen_base64 TEXT,
+            encoding_data TEXT,
+            fecha_creacion TIMESTAMP DEFAULT NOW()
+        );
+        
+        -- Habilitar RLS (Row Level Security)
+        ALTER TABLE personas ENABLE ROW LEVEL SECURITY;
+        
+        -- Política para permitir todas las operaciones
+        CREATE POLICY "Permitir todas las operaciones" ON personas
+            FOR ALL USING (true);
+        ```
+        
+        3. Verifica que la tabla se creó correctamente
+        4. Recarga esta página
+        """)
+    
+    def _show_permissions_instructions(self):
+        """Mostrar instrucciones para problemas de permisos"""
+        st.error("❌ Problema de permisos con la base de datos")
+        st.info("""
+        🔒 **Problema de Permisos RLS (Row Level Security):**
+        
+        Ve a SQL Editor en Supabase y ejecuta:
+        
+        ```sql
+        -- Verificar y crear política si no existe
+        DROP POLICY IF EXISTS "Permitir todas las operaciones" ON personas;
+        CREATE POLICY "Permitir todas las operaciones" ON personas
+            FOR ALL USING (true);
+        ```
+        
+        O puedes deshabilitar RLS temporalmente:
+        ```sql
+        ALTER TABLE personas DISABLE ROW LEVEL SECURITY;
+        ```
+        """)
+    
+    def _show_auth_instructions(self):
+        """Mostrar instrucciones para problemas de autenticación"""
+        st.error("❌ Problema de autenticación con Supabase")
+        st.info("""
+        🔑 **Verifica tus credenciales:**
+        
+        1. URL del proyecto (debe terminar en .supabase.co)
+        2. Anon/Public Key (debe empezar con eyJ...)
+        3. Verifica que no haya espacios extras
+        4. Asegúrate de usar la clave correcta (anon, no service_role)
+        """)
     
     def save_person(self, person_id: str, name: str, image: Image.Image, encoding: np.ndarray) -> bool:
         """Guardar una persona en la base de datos"""
