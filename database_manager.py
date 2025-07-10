@@ -152,6 +152,18 @@ class SupabaseManager:
             image.save(buffered, format="JPEG", quality=85)
             img_base64 = base64.b64encode(buffered.getvalue()).decode()
             
+            # Asegurar que el encoding tiene la forma correcta
+            if not isinstance(encoding, np.ndarray):
+                encoding = np.array(encoding)
+            
+            # Los encodings de face_recognition deben ser arrays 1D de 128 elementos
+            if encoding.shape != (128,):
+                if encoding.size == 128:
+                    encoding = encoding.reshape(128)
+                else:
+                    st.error(f"❌ Encoding tiene forma incorrecta: {encoding.shape} (esperado: (128,))")
+                    return False
+            
             # Convertir encoding a string base64
             encoding_bytes = pickle.dumps(encoding)
             encoding_base64 = base64.b64encode(encoding_bytes).decode()
@@ -206,9 +218,26 @@ class SupabaseManager:
             encodings = {}
             for person in response.data:
                 if person['encoding_data']:
-                    encoding_bytes = base64.b64decode(person['encoding_data'])
-                    encoding = pickle.loads(encoding_bytes)
-                    encodings[person['id']] = encoding
+                    try:
+                        encoding_bytes = base64.b64decode(person['encoding_data'])
+                        encoding = pickle.loads(encoding_bytes)
+                        
+                        # Asegurar que el encoding es un numpy array con la forma correcta
+                        if not isinstance(encoding, np.ndarray):
+                            encoding = np.array(encoding)
+                        
+                        # Los encodings de face_recognition deben ser arrays 1D de 128 elementos
+                        if encoding.shape != (128,):
+                            if encoding.size == 128:
+                                encoding = encoding.reshape(128)
+                            else:
+                                st.warning(f"⚠️ Encoding de persona {person['id']} tiene forma incorrecta: {encoding.shape}")
+                                continue
+                        
+                        encodings[person['id']] = encoding
+                    except Exception as e:
+                        st.warning(f"⚠️ Error procesando encoding de persona {person['id']}: {e}")
+                        continue
             
             return encodings
         except Exception as e:
@@ -254,6 +283,46 @@ class SupabaseManager:
         except Exception as e:
             st.error(f"Error obteniendo estadísticas: {e}")
             return {'total_persons': 0, 'total_size_mb': 0, 'encodings_active': 0}
+    
+    def update_person_encoding(self, person_id: str, new_encoding) -> bool:
+        """Actualizar el encoding de una persona específica"""
+        try:
+            # Asegurar que el encoding tiene la forma correcta
+            if not isinstance(new_encoding, np.ndarray):
+                new_encoding = np.array(new_encoding)
+            
+            if new_encoding.shape != (128,):
+                if new_encoding.size == 128:
+                    new_encoding = new_encoding.reshape(128)
+                else:
+                    st.error(f"❌ Nuevo encoding tiene forma incorrecta: {new_encoding.shape} (esperado: (128,))")
+                    return False
+            
+            # Convertir encoding a string base64
+            encoding_bytes = pickle.dumps(new_encoding)
+            encoding_base64 = base64.b64encode(encoding_bytes).decode()
+            
+            # Actualizar en Supabase
+            response = self.supabase.table('personas').update({
+                'encoding_data': encoding_base64
+            }).eq('id', person_id).execute()
+            
+            return len(response.data) > 0
+        except Exception as e:
+            st.error(f"Error actualizando encoding: {e}")
+            return False
+    
+    def delete_person_encoding(self, person_id: str) -> bool:
+        """Eliminar solo el encoding de una persona (mantener los datos básicos)"""
+        try:
+            response = self.supabase.table('personas').update({
+                'encoding_data': None
+            }).eq('id', person_id).execute()
+            
+            return len(response.data) > 0
+        except Exception as e:
+            st.error(f"Error eliminando encoding: {e}")
+            return False
 
 # Instancia global del manager
 @st.cache_resource

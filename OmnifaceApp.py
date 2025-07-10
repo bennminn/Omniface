@@ -52,11 +52,88 @@ db_manager = get_database_manager()
 
 # Función para cargar las codificaciones de rostros
 def load_encodings():
-    return db_manager.get_all_encodings()
+    encodings = db_manager.get_all_encodings()
+    
+    # Verificar y limpiar encodings incompatibles
+    valid_encodings = {}
+    invalid_count = 0
+    
+    for person_id, encoding in encodings.items():
+        if isinstance(encoding, np.ndarray) and encoding.shape == (128,):
+            valid_encodings[person_id] = encoding
+        else:
+            invalid_count += 1
+    
+    # Solo mostrar warning una vez si hay encodings incompatibles
+    if invalid_count > 0 and not st.session_state.get('incompatible_warning_shown', False):
+        st.warning(f"⚠️ {invalid_count} encodings necesitan regeneración. Ve a Estadísticas → Herramientas de Administración → Regenerar Todos.")
+        st.session_state.incompatible_warning_shown = True
+    
+    return valid_encodings
 
 # Función para cargar la base de datos de personas
 def load_database():
     return db_manager.get_all_persons()
+
+# Función para regenerar encoding de una persona
+def regenerate_person_encoding(person_id):
+    """Regenerar el encoding de una persona usando su imagen almacenada"""
+    try:
+        # Obtener imagen de la persona
+        image = db_manager.get_person_image(person_id)
+        if image is None:
+            return False, "No se pudo cargar la imagen"
+        
+        # Generar nuevo encoding
+        new_encoding = get_face_encoding(image)
+        if new_encoding is None:
+            return False, "No se pudo detectar rostro en la imagen"
+        
+        # Actualizar encoding en la base de datos
+        success = db_manager.update_person_encoding(person_id, new_encoding)
+        return success, "Encoding regenerado exitosamente" if success else "Error actualizando encoding"
+    
+    except Exception as e:
+        return False, f"Error: {str(e)}"
+
+# Función para regenerar todos los encodings incompatibles
+def regenerate_all_incompatible_encodings():
+    """Regenerar automáticamente todos los encodings incompatibles"""
+    encodings = db_manager.get_all_encodings()
+    invalid_persons = []
+    
+    for person_id, encoding in encodings.items():
+        if not isinstance(encoding, np.ndarray) or encoding.shape != (128,):
+            invalid_persons.append(person_id)
+    
+    regenerated_count = 0
+    failed_count = 0
+    
+    for person_id in invalid_persons:
+        success, message = regenerate_person_encoding(person_id)
+        if success:
+            regenerated_count += 1
+        else:
+            failed_count += 1
+    
+    return regenerated_count, failed_count, len(invalid_persons)
+
+# Función para limpiar encodings incompatibles
+def clean_incompatible_encodings():
+    """Eliminar todos los encodings incompatibles de la base de datos"""
+    encodings = db_manager.get_all_encodings()
+    invalid_persons = []
+    
+    for person_id, encoding in encodings.items():
+        if not isinstance(encoding, np.ndarray) or encoding.shape != (128,):
+            invalid_persons.append(person_id)
+    
+    removed_count = 0
+    for person_id in invalid_persons:
+        if db_manager.delete_person_encoding(person_id):
+            removed_count += 1
+    
+    return removed_count, len(invalid_persons)
 
 # Función para guardar persona completa
 def save_person_complete(person_id, name, image, encoding):
@@ -64,73 +141,100 @@ def save_person_complete(person_id, name, image, encoding):
 
 # Función para procesar imagen y obtener codificación facial
 def get_face_encoding(image):
+    """
+    Procesar imagen y obtener codificación facial usando face_recognition
+    Basado en el código funcional de Django
+    """
     try:
-        # Convertir imagen PIL a array numpy
+        # Convertir imagen PIL a array numpy en formato RGB
         image_array = np.array(image)
         
-        # Verificar que la imagen tiene el formato correcto
-        if len(image_array.shape) == 3 and image_array.shape[2] == 3:
-            # RGB
-            pass
-        elif len(image_array.shape) == 3 and image_array.shape[2] == 4:
-            # RGBA - convertir a RGB
-            image_array = image_array[:, :, :3]
-        elif len(image_array.shape) == 2:
-            # Escala de grises - convertir a RGB usando numpy
+        # Asegurar formato RGB (como en Django)
+        if len(image_array.shape) == 3:
+            if image_array.shape[2] == 4:  # RGBA
+                image_array = image_array[:, :, :3]  # Convertir a RGB
+            elif image_array.shape[2] == 3:  # Ya es RGB
+                pass
+        elif len(image_array.shape) == 2:  # Escala de grises
             image_array = np.stack([image_array] * 3, axis=-1)
         else:
             st.error("Formato de imagen no soportado")
             return None
         
-        # Detectar rostros en la imagen
+        # Detectar ubicaciones de rostros (similar a classify_face en Django)
         face_locations = face_recognition.face_locations(image_array)
         
         if len(face_locations) == 0:
             return None
         
-        # Obtener codificación del primer rostro encontrado
+        # Obtener encodings de rostros encontrados
         face_encodings = face_recognition.face_encodings(image_array, face_locations)
         
         if len(face_encodings) > 0:
-            return face_encodings[0]
+            # Retornar el primer encoding encontrado
+            encoding = face_encodings[0]
+            # Verificar que el encoding tiene la forma correcta (128 dimensiones)
+            if encoding.shape == (128,):
+                return encoding
+            else:
+                st.error(f"Encoding generado tiene forma incorrecta: {encoding.shape}")
+                return None
         
         return None
+        
     except Exception as e:
         st.error(f"Error procesando imagen: {e}")
         return None
 
 # Función para reconocer rostro
 def recognize_face(image, known_encodings):
+    """
+    Reconocer rostro comparando con encodings conocidos
+    Basado en el approach simplificado del código Django funcional
+    """
+    # Obtener encoding de la imagen capturada
     face_encoding = get_face_encoding(image)
     
     if face_encoding is None:
         return None, None
     
-    # Usar tolerancia más estricta para mayor precisión
-    tolerance = 0.25  # Más estricto que 0.4
-    min_confidence = 90  # Confianza mínima requerida
+    # Verificar que tenemos encodings conocidos válidos
+    if not known_encodings:
+        return None, None
     
-    best_match = None
-    best_confidence = 0
-    best_person_id = None
+    # Parámetros de reconocimiento (más permisivos inicialmente)
+    tolerance = 0.6  # Tolerancia estándar de face_recognition
     
-    # Comparar con todos los rostros conocidos y encontrar el mejor match
+    best_match_person_id = None
+    best_distance = float('inf')
+    
+    # Comparar con cada encoding conocido
     for person_id, known_encoding in known_encodings.items():
-        matches = face_recognition.compare_faces([known_encoding], face_encoding, tolerance=tolerance)
-        
-        if matches[0]:
-            # Calcular distancia y confianza
-            distance = face_recognition.face_distance([known_encoding], face_encoding)[0]
-            confidence = max(0, (1 - distance * 2.5) * 100)  # Fórmula ajustada para mayor precisión
+        try:
+            # Asegurar que es numpy array
+            if not isinstance(known_encoding, np.ndarray):
+                continue
+                
+            # Verificar dimensiones compatibles
+            if known_encoding.shape != (128,):
+                continue
             
-            # Solo considerar si supera la confianza mínima
-            if confidence >= min_confidence and confidence > best_confidence:
-                best_confidence = confidence
-                best_person_id = person_id
-                best_match = True
+            # Calcular distancia usando face_recognition
+            distance = face_recognition.face_distance([known_encoding], face_encoding)[0]
+            
+            # Si está dentro de la tolerancia y es el mejor match hasta ahora
+            if distance <= tolerance and distance < best_distance:
+                best_distance = distance
+                best_match_person_id = person_id
+        
+        except Exception as e:
+            # Silenciosamente continuar con el siguiente encoding
+            continue
     
-    if best_match:
-        return best_person_id, best_confidence
+    if best_match_person_id is not None:
+        # Convertir distancia a porcentaje de confianza
+        confidence = max(0, (1 - best_distance) * 100)
+        return best_match_person_id, confidence
     else:
         return None, None
 
@@ -172,8 +276,7 @@ if page == "📝 Gestión de Base de Datos":
                     help="Sube una imagen clara del rostro de la persona"
                 )
                 
-                submitted_upload = st.form_submit_button("💾 Agregar Persona (Archivo)", 
-                                                        use_container_width=True)
+                submitted_upload = st.form_submit_button("💾 Agregar Persona (Archivo)")
         
         with tab2:
             st.write("**Opción 2: Tomar foto directamente con la cámara**")
@@ -188,8 +291,7 @@ if page == "📝 Gestión de Base de Datos":
                 camera_input = st.camera_input("Tomar fotografía:",
                                               help="Haz clic para activar la cámara y tomar una foto")
                 
-                submitted_camera = st.form_submit_button("💾 Agregar Persona (Foto)", 
-                                                        use_container_width=True)
+                submitted_camera = st.form_submit_button("💾 Agregar Persona (Foto)")
         
         # Función auxiliar para procesar persona
         def process_person(person_id, person_name, image_source, source_type):
@@ -295,7 +397,7 @@ if page == "📝 Gestión de Base de Datos":
         st.subheader("👥 Base de Datos Actual")
         
         if not database.empty:
-            st.dataframe(database[['id', 'nombre']], use_container_width=True)
+            st.dataframe(database[['id', 'nombre']])
             
             # Mostrar imágenes
             st.subheader("🖼️ Galería de Rostros")
@@ -306,7 +408,7 @@ if page == "📝 Gestión de Base de Datos":
                     # Obtener imagen desde Supabase
                     image = db_manager.get_person_image(row['id'])
                     if image:
-                        st.image(image, caption=f"{row['nombre']} (ID: {row['id']})", use_container_width=True)
+                        st.image(image, caption=f"{row['nombre']} (ID: {row['id']})", width=300)
                     else:
                         st.error("❌ Error cargando imagen")
                     
@@ -343,7 +445,7 @@ elif page == "🎥 Reconocimiento Facial":
             if camera_input is not None:
                 # Procesar imagen capturada
                 image = Image.open(camera_input)
-                st.image(image, caption="Imagen capturada", use_container_width=True)
+                st.image(image, caption="Imagen capturada")
                 
                 # Realizar reconocimiento
                 with st.spinner("🔍 Analizando rostro..."):
@@ -362,7 +464,7 @@ elif page == "🎥 Reconocimiento Facial":
                         # Mostrar imagen de referencia desde Supabase
                         ref_image = db_manager.get_person_image(person_info['id'])
                         if ref_image:
-                            st.image(ref_image, caption="Imagen de referencia", use_container_width=True)
+                            st.image(ref_image, caption="Imagen de referencia")
                         else:
                             st.warning("⚠️ No se pudo cargar la imagen de referencia")
                         
@@ -424,14 +526,14 @@ elif page == "📊 Estadísticas":
     # Tabla de resumen
     if not database.empty:
         st.subheader("📋 Resumen de Base de Datos")
-        st.dataframe(database, use_container_width=True)
+        st.dataframe(database)
     
     # Información del sistema
     st.subheader("ℹ️ Información del Sistema")
     st.info("""
     **Sistema de Reconocimiento Facial OmniFace v2.0**
     
-    - **Tecnología:** OpenCV + Supabase
+    - **Tecnología:** face_recognition + Supabase
     - **Base de datos:** Supabase (PostgreSQL)
     - **Almacenamiento:** Cloud (persistente)
     - **Tolerancia:** 0.25 (alta precisión)
@@ -439,6 +541,65 @@ elif page == "📊 Estadísticas":
     - **Formatos soportados:** JPG, JPEG, PNG
     - **Deploy:** Compatible con Streamlit Cloud
     """)
+    
+    # Sección de administración
+    st.subheader("🔧 Herramientas de Administración")
+    
+    col_admin1, col_admin2 = st.columns(2)
+    
+    with col_admin1:
+        st.write("**🔄 Regenerar Encodings Automáticamente**")
+        st.info("Regenera automáticamente todos los encodings incompatibles usando las imágenes almacenadas")
+        if st.button("🔄 Regenerar Todos", type="primary"):
+            with st.spinner("Regenerando encodings incompatibles..."):
+                regenerated, failed, total = regenerate_all_incompatible_encodings()
+                if regenerated > 0:
+                    st.success(f"✅ Se regeneraron {regenerated} encodings exitosamente")
+                    if failed > 0:
+                        st.warning(f"⚠️ {failed} encodings no pudieron regenerarse")
+                    st.info("🔄 Recargando página...")
+                    st.rerun()
+                else:
+                    if total == 0:
+                        st.info("ℹ️ No se encontraron encodings incompatibles")
+                    else:
+                        st.error(f"❌ No se pudieron regenerar {failed} encodings")
+        
+        st.write("**🗑️ Limpiar Encodings Incompatibles**")
+        st.info("Elimina encodings con formato incorrecto (solo como último recurso)")
+        if st.button("🗑️ Limpiar Encodings", type="secondary"):
+            with st.spinner("Limpiando encodings incompatibles..."):
+                removed, total_invalid = clean_incompatible_encodings()
+                if removed > 0:
+                    st.success(f"✅ Se eliminaron {removed} de {total_invalid} encodings incompatibles")
+                    st.rerun()
+                else:
+                    st.info("ℹ️ No se encontraron encodings incompatibles para eliminar")
+    
+    with col_admin2:
+        st.write("**Regenerar Encodings**")
+        st.info("Regenera encodings para personas específicas usando sus imágenes")
+        
+        # Selector de persona para regenerar
+        if not database.empty:
+            person_options = [(row['id'], f"{row['nombre']} (ID: {row['id']})") for _, row in database.iterrows()]
+            selected_person = st.selectbox(
+                "Seleccionar persona:",
+                options=[None] + person_options,
+                format_func=lambda x: "Selecciona una persona..." if x is None else x[1]
+            )
+            
+            if selected_person and st.button("🔄 Regenerar Encoding", type="secondary"):
+                person_id = selected_person[0]
+                with st.spinner(f"Regenerando encoding para {selected_person[1]}..."):
+                    success, message = regenerate_person_encoding(person_id)
+                    if success:
+                        st.success(f"✅ {message}")
+                        st.rerun()
+                    else:
+                        st.error(f"❌ {message}")
+        else:
+            st.info("No hay personas registradas")
 
 # Footer
 st.markdown("---")
