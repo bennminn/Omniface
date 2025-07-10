@@ -26,6 +26,8 @@ dlib>=19.24.0
 cmake>=3.18.0
 ```
 
+**📝 Nota importante**: NO necesitas instalar `face_recognition_models` por separado. Los modelos pre-entrenados se descargan automáticamente en la primera ejecución.
+
 ### 3. `OmnifaceApp.py` (MIGRADO)
 - ❌ Eliminado: Clase `FaceRecognitionSimulator`
 - ✅ Agregado: `import face_recognition` 
@@ -57,6 +59,7 @@ git push origin main
 ### **Paso 2**: Redeploy automático
 - Streamlit Cloud detectará los cambios
 - Instalará las dependencias automáticamente
+- **Descargará modelos** de `face_recognition` automáticamente
 - La app se actualizará sin intervención
 
 ### **Paso 3**: Verificar logs
@@ -65,8 +68,16 @@ git push origin main
 
 ## ⚠️ Consideraciones
 
+### **Modelos pre-entrenados (automáticos)**
+- ✅ **HOG detector**: Descarga automática (~2MB)
+- ✅ **CNN detector**: Descarga automática (~10MB) 
+- ✅ **ResNet encoder**: Descarga automática (~100MB)
+- ✅ **Landmark predictor**: Descarga automática (~60MB)
+- 🌐 **Total**: ~170MB descargados en primera ejecución
+- ⏱️ **Tiempo**: 1-2 minutos adicionales en primer deploy
+
 ### **Tiempo de build**
-- Primera vez: 5-10 minutos (compilación)
+- Primera vez: 5-10 minutos (compilación + descarga de modelos)
 - Siguientes deploys: ~2-3 minutos
 
 ### **Rendimiento**
