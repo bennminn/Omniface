@@ -1,5 +1,14 @@
 import streamlit as st
-import cv2
+
+# Intentar importar OpenCV con manejo de errores
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except ImportError as e:
+    st.error(f"Error importando OpenCV: {e}")
+    st.error("Verifica que opencv-python-headless esté instalado correctamente")
+    CV2_AVAILABLE = False
+
 import numpy as np
 import pandas as pd
 from PIL import Image
@@ -7,7 +16,15 @@ import os
 import pickle
 import io
 from database_manager import get_db_manager
-import face_recognition
+
+# Intentar importar face_recognition con manejo de errores  
+try:
+    import face_recognition
+    FACE_RECOGNITION_AVAILABLE = True
+except ImportError as e:
+    st.error(f"Error importando face_recognition: {e}")
+    st.error("Cayendo de vuelta al simulador...")
+    FACE_RECOGNITION_AVAILABLE = False
 
 # Configuración de la página
 st.set_page_config(
