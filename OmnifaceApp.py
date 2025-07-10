@@ -1,5 +1,14 @@
 import streamlit as st
-import numpy as np
+
+# Intentar importar numpy con manejo de errores específicos
+try:
+    import numpy as np
+    NUMPY_AVAILABLE = True
+except ImportError as e:
+    st.error(f"Error importando numpy: {e}")
+    st.error("Numpy es requerido para el reconocimiento facial")
+    NUMPY_AVAILABLE = False
+
 import pandas as pd
 from PIL import Image
 import os
@@ -15,6 +24,12 @@ except ImportError as e:
     st.error(f"Error importando face_recognition: {e}")
     st.error("Cayendo de vuelta al simulador...")
     FACE_RECOGNITION_AVAILABLE = False
+
+# Verificar que todas las dependencias estén disponibles
+if not NUMPY_AVAILABLE:
+    st.stop()
+if not FACE_RECOGNITION_AVAILABLE:
+    st.stop()
 
 # Configuración de la página
 st.set_page_config(

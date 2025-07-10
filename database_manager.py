@@ -2,7 +2,20 @@
 Módulo para manejar la base de datos Supabase
 """
 import streamlit as st
-import numpy as np
+try:
+    import numpy as np
+    NUMPY_AVAILABLE = True
+except ImportError as e:
+    st.error(f"Error importando numpy en database_manager: {e}")
+    NUMPY_AVAILABLE = False
+    # Crear un numpy dummy para evitar errores
+    class NumpyDummy:
+        def array(self, *args, **kwargs):
+            return None
+        def frombuffer(self, *args, **kwargs):
+            return None
+    np = NumpyDummy()
+
 import pandas as pd
 from supabase import create_client, Client
 import pickle
@@ -131,7 +144,7 @@ class SupabaseManager:
         4. Asegúrate de usar la clave correcta (anon, no service_role)
         """)
     
-    def save_person(self, person_id: str, name: str, image: Image.Image, encoding: np.ndarray) -> bool:
+    def save_person(self, person_id: str, name: str, image: Image.Image, encoding) -> bool:
         """Guardar una persona en la base de datos"""
         try:
             # Convertir imagen a base64
@@ -185,7 +198,7 @@ class SupabaseManager:
             st.error(f"Error cargando imagen: {e}")
             return None
     
-    def get_all_encodings(self) -> Dict[str, np.ndarray]:
+    def get_all_encodings(self) -> Dict[str, Any]:
         """Obtener todas las codificaciones faciales"""
         try:
             response = self.supabase.table('personas').select('id, encoding_data').execute()
