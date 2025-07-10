@@ -5,6 +5,7 @@
 database.csv
 images/
 __pycache__/
+dlib-19.24.99-cp312-cp312-win_amd64.whl
 
 # Archivos esenciales del proyecto (no ignorar)
 !database_manager.py

@@ -1,14 +1,4 @@
 import streamlit as st
-
-# Intentar importar OpenCV con manejo de errores
-try:
-    import cv2
-    CV2_AVAILABLE = True
-except ImportError as e:
-    st.error(f"Error importando OpenCV: {e}")
-    st.error("Verifica que opencv-python-headless esté instalado correctamente")
-    CV2_AVAILABLE = False
-
 import numpy as np
 import pandas as pd
 from PIL import Image
@@ -71,8 +61,8 @@ def get_face_encoding(image):
             # RGBA - convertir a RGB
             image_array = image_array[:, :, :3]
         elif len(image_array.shape) == 2:
-            # Escala de grises - convertir a RGB
-            image_array = cv2.cvtColor(image_array, cv2.COLOR_GRAY2RGB)
+            # Escala de grises - convertir a RGB usando numpy
+            image_array = np.stack([image_array] * 3, axis=-1)
         else:
             st.error("Formato de imagen no soportado")
             return None
