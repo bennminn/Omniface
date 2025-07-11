@@ -238,6 +238,107 @@ def recognize_face(image, known_encodings):
     else:
         return None, None
 
+# Función para procesar múltiples imágenes y crear encoding promediado
+def get_averaged_face_encoding(images):
+    """
+    Procesar múltiples imágenes y crear un encoding promediado más robusto
+    Esto mejora significativamente la precisión del reconocimiento
+    """
+    try:
+        valid_encodings = []
+        
+        for i, image in enumerate(images):
+            # Obtener encoding individual
+            encoding = get_face_encoding(image)
+            if encoding is not None:
+                valid_encodings.append(encoding)
+                st.success(f"✅ Imagen {i+1}: Rostro detectado correctamente")
+            else:
+                st.warning(f"⚠️ Imagen {i+1}: No se detectó rostro claro")
+        
+        if len(valid_encodings) == 0:
+            st.error("❌ No se pudo detectar rostros válidos en ninguna imagen")
+            return None
+        elif len(valid_encodings) == 1:
+            st.info("ℹ️ Solo una imagen válida disponible")
+            return valid_encodings[0]
+        else:
+            # Promediar los encodings para mayor robustez
+            averaged_encoding = np.mean(valid_encodings, axis=0)
+            st.success(f"🎯 Encoding promediado creado desde {len(valid_encodings)} imágenes válidas")
+            st.info("💡 El encoding promediado mejora significativamente la precisión del reconocimiento")
+            return averaged_encoding
+            
+    except Exception as e:
+        st.error(f"Error procesando múltiples imágenes: {e}")
+        return None
+
+# Función auxiliar para procesar múltiples imágenes (registro avanzado)
+def process_advanced_person(person_id, person_name, image_sources):
+    """Procesar y agregar una nueva persona usando múltiples imágenes"""
+    # Validaciones
+    if not person_id:
+        st.error("❌ Por favor ingresa un ID para la persona")
+        return False
+    elif not person_name:
+        st.error("❌ Por favor ingresa el nombre completo")
+        return False
+    elif not any(image_sources):
+        st.error("❌ Por favor toma al menos una fotografía")
+        return False
+    elif db_manager.person_exists(person_id):
+        st.error(f"❌ Ya existe una persona con ID '{person_id}'")
+        return False
+    else:
+        try:
+            # Filtrar imágenes válidas
+            valid_images = []
+            for i, img_source in enumerate(image_sources):
+                if img_source is not None:
+                    image = Image.open(img_source)
+                    valid_images.append(image)
+                    st.success(f"✅ Imagen {i+1} cargada correctamente")
+            
+            if len(valid_images) == 0:
+                st.error("❌ No se pudo cargar ninguna imagen válida")
+                return False
+            
+            st.info(f"📷 Procesando {len(valid_images)} imagen(es)...")
+            
+            # Usar la función de encoding promediado
+            averaged_encoding = get_averaged_face_encoding(valid_images)
+            
+            if averaged_encoding is not None:
+                # Guardar persona con encoding promediado (usar la primera imagen como representativa)
+                if save_person_complete(person_id, person_name, valid_images[0], averaged_encoding):
+                    st.success("✅ Datos guardados en la base de datos")
+                    st.success("✅ Encoding promediado creado y guardado")
+                    st.success(f"🎉 Persona '{person_name}' agregada exitosamente con registro avanzado!")
+                    
+                    # Mostrar métricas de calidad
+                    st.info(f"📊 Se procesaron {len(valid_images)} imágenes para máxima precisión")
+                    
+                    # Mostrar preview de las imágenes
+                    preview_cols = st.columns(len(valid_images))
+                    for i, img in enumerate(valid_images):
+                        with preview_cols[i]:
+                            st.image(img, caption=f"Imagen {i+1}", width=150)
+                    
+                    st.info("🔄 Recarga la página para ver los cambios en la galería")
+                    return True
+                else:
+                    st.error("❌ Error guardando en la base de datos")
+                    return False
+            else:
+                st.error("❌ No se pudo procesar las imágenes para crear el encoding")
+                st.info("💡 Consejos: Asegúrate de que al menos una imagen contenga un rostro claro")
+                return False
+        
+        except Exception as e:
+            st.error(f"❌ Error procesando las imágenes: {str(e)}")
+            st.info("🔧 Intenta con imágenes diferentes o verifica que los archivos no estén corruptos")
+            return False
+
 # Sidebar para navegación
 with st.sidebar:
     st.header("🔧 Panel de Control")
@@ -260,7 +361,7 @@ if page == "📝 Gestión de Base de Datos":
         st.subheader("➕ Agregar Nueva Persona")
         
         # Tabs para diferentes métodos de captura
-        tab1, tab2 = st.tabs(["📁 Subir Archivo", "📷 Tomar Foto"])
+        tab1, tab2, tab3 = st.tabs(["📁 Subir Archivo", "📷 Tomar Foto", "🎯 Registro Avanzado"])
         
         with tab1:
             st.write("**Opción 1: Subir una imagen desde tu dispositivo**")
@@ -293,6 +394,60 @@ if page == "📝 Gestión de Base de Datos":
                 
                 submitted_camera = st.form_submit_button("💾 Agregar Persona (Foto)")
         
+        with tab3:
+            st.write("**Opción 3: Registro Avanzado con 3 Imágenes 🎯**")
+            st.info("🚀 **Mejora la precisión:** Toma 3 fotos diferentes para crear un encoding más robusto")
+            st.markdown("""
+            **¿Por qué usar 3 imágenes?**
+            - 📈 **Mayor precisión:** Aumenta significativamente la confianza del reconocimiento
+            - 🎭 **Diferentes condiciones:** Captura variaciones naturales del rostro
+            - 💡 **Robustez:** Menos sensible a cambios de iluminación y expresiones
+            - ✅ **Recomendado** para usuarios que han tenido problemas de baja confianza
+            """)
+            
+            with st.form("add_person_advanced_form"):
+                person_id_advanced = st.text_input("ID de la Persona:", key="id_advanced",
+                                                 help="Ingresa un identificador único (ej: 12345678)")
+                person_name_advanced = st.text_input("Nombre Completo:", key="name_advanced",
+                                                   help="Nombre completo de la persona")
+                
+                st.markdown("### 📸 Captura de 3 Imágenes")
+                st.info("💡 **Consejos:** Toma cada foto con diferentes condiciones de luz o ángulos ligeramente distintos")
+                
+                # Contenedores para las 3 imágenes
+                col_img1, col_img2, col_img3 = st.columns(3)
+                
+                with col_img1:
+                    st.markdown("**📷 Imagen 1:**")
+                    camera_input_1 = st.camera_input("Foto 1 (ej: luz natural):", key="cam1")
+                
+                with col_img2:
+                    st.markdown("**📷 Imagen 2:**")
+                    camera_input_2 = st.camera_input("Foto 2 (ej: luz artificial):", key="cam2")
+                
+                with col_img3:
+                    st.markdown("**📷 Imagen 3:**")
+                    camera_input_3 = st.camera_input("Foto 3 (ej: expresión neutra):", key="cam3")
+                
+                # Mostrar preview de las imágenes capturadas
+                if camera_input_1 or camera_input_2 or camera_input_3:
+                    st.markdown("### 🖼️ Vista Previa de Imágenes Capturadas")
+                    preview_cols = st.columns(3)
+                    
+                    if camera_input_1:
+                        with preview_cols[0]:
+                            st.image(camera_input_1, caption="Imagen 1", width=150)
+                    
+                    if camera_input_2:
+                        with preview_cols[1]:
+                            st.image(camera_input_2, caption="Imagen 2", width=150)
+                    
+                    if camera_input_3:
+                        with preview_cols[2]:
+                            st.image(camera_input_3, caption="Imagen 3", width=150)
+                
+                submitted_advanced = st.form_submit_button("🎯 Agregar Persona (Registro Avanzado)")
+
         # Función auxiliar para procesar persona
         def process_person(person_id, person_name, image_source, source_type):
             """Procesar y agregar una nueva persona a la base de datos"""
@@ -353,6 +508,19 @@ if page == "📝 Gestión de Base de Datos":
         # Procesar formulario de cámara
         if submitted_camera:
             process_person(person_id_camera, person_name_camera, camera_input, "camera")
+        
+        # Procesar formulario de registro avanzado
+        if submitted_advanced:
+            # Validar que se capturaron al menos 2 imágenes
+            images_captured = [camera_input_1, camera_input_2, camera_input_3]
+            valid_images_count = sum(1 for img in images_captured if img is not None)
+            
+            if valid_images_count < 2:
+                st.error("❌ Debes capturar al menos 2 imágenes para el registro avanzado")
+                st.info("💡 El registro avanzado requiere mínimo 2 imágenes para crear un encoding robusto")
+            else:
+                # Procesar con las imágenes válidas
+                process_advanced_person(person_id_advanced, person_name_advanced, images_captured)
         
         # Sección de ayuda y preview
         st.markdown("---")
