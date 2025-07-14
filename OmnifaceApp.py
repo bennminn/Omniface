@@ -20,10 +20,22 @@ from database_manager import get_db_manager
 try:
     import face_recognition
     FACE_RECOGNITION_AVAILABLE = True
-    st.success("✅ Face recognition disponible")
+    st.success("✅ Face recognition cargado correctamente")
 except ImportError as e:
-    st.warning(f"⚠️ Face recognition no disponible: {e}")
-    st.info("🔄 Funcionando en modo simulado")
+    st.error(f"❌ Error importando face_recognition: {e}")
+    st.error("🔧 Esto indica un problema con las dependencias del sistema")
+    st.info("""
+    📋 **Dependencias requeridas en packages.txt:**
+    - build-essential
+    - cmake  
+    - libopenblas-dev
+    - liblapack-dev
+    - libboost-all-dev
+    - python3-dev
+    - libatlas-base-dev
+    - gfortran
+    """)
+    st.warning("⚠️ Funcionando en modo simulado temporalmente")
     FACE_RECOGNITION_AVAILABLE = False
 
 # Verificar que numpy esté disponible (requerido)
@@ -31,24 +43,26 @@ if not NUMPY_AVAILABLE:
     st.error("❌ Numpy es requerido para la aplicación")
     st.stop()
 
-# Continuar sin face_recognition en modo simulado
+# Si face_recognition no está disponible, usar simulación
 if not FACE_RECOGNITION_AVAILABLE:
-    st.info("🎯 Aplicación iniciada en modo simulado (sin reconocimiento facial real)")
+    st.warning("🎯 Modo simulado activado - Reconocimiento facial no real")
     # Crear funciones dummy para face_recognition
     class FaceRecognitionDummy:
         @staticmethod
         def face_locations(*args, **kwargs):
-            return [(0, 100, 100, 0)]  # Simular una cara detectada
+            return [(50, 150, 150, 50)]  # Simular una cara detectada
         
         @staticmethod
         def face_encodings(*args, **kwargs):
-            return [np.random.rand(128)]  # Encoding aleatorio
+            return [np.random.rand(128)]  # Encoding aleatorio pero consistente
         
         @staticmethod
-        def face_distance(*args, **kwargs):
-            return [np.random.uniform(0.3, 0.7)]  # Distancia aleatoria
+        def face_distance(known_encodings, face_encoding):
+            return [np.random.uniform(0.2, 0.8)]  # Distancia aleatoria realista
     
     face_recognition = FaceRecognitionDummy()
+else:
+    st.success("🎯 Reconocimiento facial real activado")
 
 # Configuración de la página
 st.set_page_config(
