@@ -81,7 +81,7 @@ def load_encodings():
     invalid_count = 0
     
     for person_id, encoding in encodings.items():
-        if isinstance(encoding, np.ndarray) and encoding.shape == (128,):
+        if isinstance(encoding, np.ndarray) and encoding.shape == (512,):
             valid_encodings[person_id] = encoding
         else:
             invalid_count += 1
