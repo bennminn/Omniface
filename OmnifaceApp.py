@@ -20,16 +20,35 @@ from database_manager import get_db_manager
 try:
     import face_recognition
     FACE_RECOGNITION_AVAILABLE = True
+    st.success("✅ Face recognition disponible")
 except ImportError as e:
-    st.error(f"Error importando face_recognition: {e}")
-    st.error("Cayendo de vuelta al simulador...")
+    st.warning(f"⚠️ Face recognition no disponible: {e}")
+    st.info("🔄 Funcionando en modo simulado")
     FACE_RECOGNITION_AVAILABLE = False
 
-# Verificar que todas las dependencias estén disponibles
+# Verificar que numpy esté disponible (requerido)
 if not NUMPY_AVAILABLE:
+    st.error("❌ Numpy es requerido para la aplicación")
     st.stop()
+
+# Continuar sin face_recognition en modo simulado
 if not FACE_RECOGNITION_AVAILABLE:
-    st.stop()
+    st.info("🎯 Aplicación iniciada en modo simulado (sin reconocimiento facial real)")
+    # Crear funciones dummy para face_recognition
+    class FaceRecognitionDummy:
+        @staticmethod
+        def face_locations(*args, **kwargs):
+            return [(0, 100, 100, 0)]  # Simular una cara detectada
+        
+        @staticmethod
+        def face_encodings(*args, **kwargs):
+            return [np.random.rand(128)]  # Encoding aleatorio
+        
+        @staticmethod
+        def face_distance(*args, **kwargs):
+            return [np.random.uniform(0.3, 0.7)]  # Distancia aleatoria
+    
+    face_recognition = FaceRecognitionDummy()
 
 # Configuración de la página
 st.set_page_config(
