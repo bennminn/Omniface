@@ -248,8 +248,14 @@ class SupabaseManager:
                         if encoding.shape != (512,):
                             if encoding.size == 512:
                                 encoding = encoding.reshape(512)
+                            elif encoding.size == 4096:
+                                st.warning(f"⚠️ Encoding de persona {person['id']} tiene 4096D (modelo anterior). Regenera encodings.")
+                                continue
+                            elif encoding.size == 128:
+                                st.warning(f"⚠️ Encoding de persona {person['id']} tiene 128D (face_recognition). Regenera encodings.")
+                                continue
                             else:
-                                st.warning(f"⚠️ Encoding de persona {person['id']} tiene forma incorrecta: {encoding.shape}")
+                                st.warning(f"⚠️ Encoding de persona {person['id']} tiene forma incorrecta: {encoding.shape} (esperado: 512D)")
                                 continue
                         
                         encodings[person['id']] = encoding
