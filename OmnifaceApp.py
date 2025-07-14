@@ -16,11 +16,20 @@ import pickle
 import io
 from database_manager import get_db_manager
 
+# Intentar importar OpenCV para mejor precisión
+try:
+    import cv2
+    OPENCV_AVAILABLE = True
+    st.success("✅ OpenCV disponible - Mayor precisión en detección")
+except ImportError as e:
+    st.warning(f"⚠️ OpenCV no disponible: {e}")
+    OPENCV_AVAILABLE = False
+
 # Intentar importar DeepFace (versión ligera)
 try:
     from deepface import DeepFace
     DEEPFACE_AVAILABLE = True
-    st.success("🎯 DeepFace activado - Reconocimiento facial avanzado (versión ligera)")
+    st.success("🎯 DeepFace activado - Reconocimiento facial avanzado")
 except ImportError as e:
     st.warning(f"⚠️ DeepFace no disponible: {e}")
     st.info("🔄 Funcionando en modo simulado")
@@ -51,13 +60,6 @@ if not DEEPFACE_AVAILABLE:
 else:
     st.success("🎯 Reconocimiento facial con DeepFace activado")
 
-# Configuración de la página
-st.set_page_config(
-    page_title="OmniFace - Reconocimiento Facial",
-    page_icon="👁️",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
 
 # Título principal
 st.title("🎯 OmniFace - Sistema de Reconocimiento Facial")
@@ -181,15 +183,34 @@ def get_face_encoding(image):
             st.error("Formato de imagen no soportado")
             return None
         
+        # Preprocesamiento mejorado con OpenCV si está disponible
+        if OPENCV_AVAILABLE:
+            try:
+                # Convertir RGB a BGR para OpenCV
+                image_bgr = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
+                
+                # Aplicar filtros para mejorar la calidad
+                image_bgr = cv2.bilateralFilter(image_bgr, 9, 75, 75)  # Reducir ruido
+                image_bgr = cv2.convertScaleAbs(image_bgr, alpha=1.1, beta=10)  # Mejorar contraste
+                
+                # Convertir de vuelta a RGB para DeepFace
+                image_array = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+            except Exception as cv_error:
+                st.warning(f"Error en preprocesamiento OpenCV: {cv_error}")
+                # Continuar con imagen original
+        
         # Usar DeepFace para obtener embedding
         if DEEPFACE_AVAILABLE:
             try:
+                # Elegir backend de detección según disponibilidad
+                detector_backend = 'opencv' if OPENCV_AVAILABLE else 'ssd'
+                
                 # DeepFace con modelo Facenet512 (512 dimensiones)
                 embedding_result = DeepFace.represent(
                     img_path=image_array,
                     model_name='Facenet512',
                     enforce_detection=True,
-                    detector_backend='opencv'  # Usa OpenCV interno
+                    detector_backend=detector_backend
                 )
                 
                 if embedding_result and len(embedding_result) > 0:
