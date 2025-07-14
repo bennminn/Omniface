@@ -17,7 +17,20 @@ except ImportError as e:
     np = NumpyDummy()
 
 import pandas as pd
-from supabase import create_client, Client
+try:
+    from supabase import create_client, Client
+    SUPABASE_AVAILABLE = True
+except ImportError as e:
+    st.error(f"❌ Error importando supabase: {e}")
+    st.error("📦 Por favor instala supabase: pip install supabase")
+    st.info("🔧 En algunos entornos puede requerir: pip install supabase-py")
+    SUPABASE_AVAILABLE = False
+    # Crear clases dummy para evitar errores
+    class Client:
+        pass
+    def create_client(*args, **kwargs):
+        return None
+
 import pickle
 import base64
 import os
@@ -28,6 +41,11 @@ from PIL import Image
 class SupabaseManager:
     def __init__(self):
         """Inicializar conexión con Supabase"""
+        if not SUPABASE_AVAILABLE:
+            st.error("❌ Supabase no está disponible")
+            st.info("📦 Instala supabase con: pip install supabase")
+            st.stop()
+        
         self.supabase = self._get_supabase_client()
         self._ensure_tables_exist()
     
@@ -328,4 +346,9 @@ class SupabaseManager:
 @st.cache_resource
 def get_db_manager():
     """Obtener instancia singleton del manager de base de datos"""
+    if not SUPABASE_AVAILABLE:
+        st.error("❌ No se puede inicializar el manager de base de datos")
+        st.error("📦 Supabase no está disponible. Instala con: pip install supabase")
+        st.stop()
+    
     return SupabaseManager()
