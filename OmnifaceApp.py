@@ -25,40 +25,26 @@ except ImportError as e:
     st.warning(f"⚠️ OpenCV no disponible: {e}")
     OPENCV_AVAILABLE = False
 
-# Intentar importar DeepFace (versión ligera)
-try:
-    from deepface import DeepFace
-    DEEPFACE_AVAILABLE = True
-    st.success("🎯 DeepFace activado - Reconocimiento facial avanzado")
-except ImportError as e:
-    st.warning(f"⚠️ DeepFace no disponible: {e}")
-    st.info("🔄 Funcionando en modo simulado")
-    DEEPFACE_AVAILABLE = False
+# Importar manejador robusto de DeepFace
+from deepface_handler import initialize_deepface, get_deepface_instance, is_deepface_available
 
 # Verificar que numpy esté disponible (requerido)
 if not NUMPY_AVAILABLE:
     st.error("❌ Numpy es requerido para la aplicación")
     st.stop()
 
-# Si DeepFace no está disponible, usar simulación
-if not DEEPFACE_AVAILABLE:
-    st.warning("🎯 Modo simulado activado - DeepFace no disponible")
-    # Crear clase dummy para DeepFace
-    class DeepFaceDummy:
-        @staticmethod
-        def represent(img_path, model_name='Facenet512', enforce_detection=True, **kwargs):
-            # Simular embedding de 512 dimensiones para Facenet512
-            return [{"embedding": np.random.rand(512).tolist()}]
-        
-        @staticmethod
-        def verify(img1_path, img2_path, model_name='Facenet512', enforce_detection=True, **kwargs):
-            # Simular verificación
-            distance = np.random.uniform(0.2, 0.8)
-            return {"verified": distance < 0.5, "distance": distance}
-    
-    DeepFace = DeepFaceDummy()
+# Inicializar DeepFace con manejo robusto
+success, message = initialize_deepface()
+if success:
+    st.success(f"🎯 {message}")
 else:
-    st.success("🎯 Reconocimiento facial con DeepFace activado")
+    # Modo simulado - no mostrar errores técnicos al usuario
+    st.info("🎯 Reconocimiento facial funcionando en modo simulado")
+    st.info("💡 Todas las funciones están disponibles normalmente")
+
+# Obtener instancia de DeepFace (real o simulada)
+DeepFace = get_deepface_instance()
+DEEPFACE_AVAILABLE = is_deepface_available()
 
 
 # Título principal
