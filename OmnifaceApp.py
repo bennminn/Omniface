@@ -125,7 +125,7 @@ def regenerate_all_incompatible_encodings():
     invalid_persons = []
     
     for person_id, encoding in encodings.items():
-        if not isinstance(encoding, np.ndarray) or encoding.shape != (128,):
+        if not isinstance(encoding, np.ndarray) or encoding.shape != (512,):
             invalid_persons.append(person_id)
     
     regenerated_count = 0
@@ -147,7 +147,7 @@ def clean_incompatible_encodings():
     invalid_persons = []
     
     for person_id, encoding in encodings.items():
-        if not isinstance(encoding, np.ndarray) or encoding.shape != (128,):
+        if not isinstance(encoding, np.ndarray) or encoding.shape != (512,):
             invalid_persons.append(person_id)
     
     removed_count = 0

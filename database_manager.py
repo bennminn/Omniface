@@ -174,12 +174,12 @@ class SupabaseManager:
             if not isinstance(encoding, np.ndarray):
                 encoding = np.array(encoding)
             
-            # Los encodings de face_recognition deben ser arrays 1D de 128 elementos
-            if encoding.shape != (128,):
-                if encoding.size == 128:
-                    encoding = encoding.reshape(128)
+            # Los encodings de DeepFace deben ser arrays 1D de 512 elementos
+            if encoding.shape != (512,):
+                if encoding.size == 512:
+                    encoding = encoding.reshape(512)
                 else:
-                    st.error(f"❌ Encoding tiene forma incorrecta: {encoding.shape} (esperado: (128,))")
+                    st.error(f"❌ Encoding tiene forma incorrecta: {encoding.shape} (esperado: (512,))")
                     return False
             
             # Convertir encoding a string base64
@@ -244,10 +244,10 @@ class SupabaseManager:
                         if not isinstance(encoding, np.ndarray):
                             encoding = np.array(encoding)
                         
-                        # Los encodings de face_recognition deben ser arrays 1D de 128 elementos
-                        if encoding.shape != (128,):
-                            if encoding.size == 128:
-                                encoding = encoding.reshape(128)
+                        # Los encodings de DeepFace deben ser arrays 1D de 512 elementos
+                        if encoding.shape != (512,):
+                            if encoding.size == 512:
+                                encoding = encoding.reshape(512)
                             else:
                                 st.warning(f"⚠️ Encoding de persona {person['id']} tiene forma incorrecta: {encoding.shape}")
                                 continue
@@ -309,11 +309,11 @@ class SupabaseManager:
             if not isinstance(new_encoding, np.ndarray):
                 new_encoding = np.array(new_encoding)
             
-            if new_encoding.shape != (128,):
-                if new_encoding.size == 128:
-                    new_encoding = new_encoding.reshape(128)
+            if new_encoding.shape != (512,):
+                if new_encoding.size == 512:
+                    new_encoding = new_encoding.reshape(512)
                 else:
-                    st.error(f"❌ Nuevo encoding tiene forma incorrecta: {new_encoding.shape} (esperado: (128,))")
+                    st.error(f"❌ Nuevo encoding tiene forma incorrecta: {new_encoding.shape} (esperado: (512,))")
                     return False
             
             # Convertir encoding a string base64
