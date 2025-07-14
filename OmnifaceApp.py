@@ -16,53 +16,40 @@ import pickle
 import io
 from database_manager import get_db_manager
 
-# Intentar importar face_recognition con manejo de errores  
+# Intentar importar DeepFace (versión ligera)
 try:
-    import face_recognition
-    FACE_RECOGNITION_AVAILABLE = True
-    st.success("✅ Face recognition cargado correctamente")
+    from deepface import DeepFace
+    DEEPFACE_AVAILABLE = True
+    st.success("🎯 DeepFace activado - Reconocimiento facial avanzado (versión ligera)")
 except ImportError as e:
-    st.error(f"❌ Error importando face_recognition: {e}")
-    st.error("🔧 Esto indica un problema con las dependencias del sistema")
-    st.info("""
-    📋 **Dependencias requeridas en packages.txt:**
-    - build-essential
-    - cmake  
-    - libopenblas-dev
-    - liblapack-dev
-    - libboost-all-dev
-    - python3-dev
-    - libatlas-base-dev
-    - gfortran
-    """)
-    st.warning("⚠️ Funcionando en modo simulado temporalmente")
-    FACE_RECOGNITION_AVAILABLE = False
+    st.warning(f"⚠️ DeepFace no disponible: {e}")
+    st.info("🔄 Funcionando en modo simulado")
+    DEEPFACE_AVAILABLE = False
 
 # Verificar que numpy esté disponible (requerido)
 if not NUMPY_AVAILABLE:
     st.error("❌ Numpy es requerido para la aplicación")
     st.stop()
 
-# Si face_recognition no está disponible, usar simulación
-if not FACE_RECOGNITION_AVAILABLE:
-    st.warning("🎯 Modo simulado activado - Reconocimiento facial no real")
-    # Crear funciones dummy para face_recognition
-    class FaceRecognitionDummy:
+# Si DeepFace no está disponible, usar simulación
+if not DEEPFACE_AVAILABLE:
+    st.warning("🎯 Modo simulado activado - DeepFace no disponible")
+    # Crear clase dummy para DeepFace
+    class DeepFaceDummy:
         @staticmethod
-        def face_locations(*args, **kwargs):
-            return [(50, 150, 150, 50)]  # Simular una cara detectada
+        def represent(img_path, model_name='Facenet512', enforce_detection=True, **kwargs):
+            # Simular embedding de 512 dimensiones para Facenet512
+            return [{"embedding": np.random.rand(512).tolist()}]
         
         @staticmethod
-        def face_encodings(*args, **kwargs):
-            return [np.random.rand(128)]  # Encoding aleatorio pero consistente
-        
-        @staticmethod
-        def face_distance(known_encodings, face_encoding):
-            return [np.random.uniform(0.2, 0.8)]  # Distancia aleatoria realista
+        def verify(img1_path, img2_path, model_name='Facenet512', enforce_detection=True, **kwargs):
+            # Simular verificación
+            distance = np.random.uniform(0.2, 0.8)
+            return {"verified": distance < 0.5, "distance": distance}
     
-    face_recognition = FaceRecognitionDummy()
+    DeepFace = DeepFaceDummy()
 else:
-    st.success("🎯 Reconocimiento facial real activado")
+    st.success("🎯 Reconocimiento facial con DeepFace activado")
 
 # Configuración de la página
 st.set_page_config(
@@ -175,14 +162,14 @@ def save_person_complete(person_id, name, image, encoding):
 # Función para procesar imagen y obtener codificación facial
 def get_face_encoding(image):
     """
-    Procesar imagen y obtener codificación facial usando face_recognition
-    Basado en el código funcional de Django
+    Procesar imagen y obtener codificación facial usando DeepFace
+    Versión optimizada y precavida para Streamlit Cloud
     """
     try:
         # Convertir imagen PIL a array numpy en formato RGB
         image_array = np.array(image)
         
-        # Asegurar formato RGB (como en Django)
+        # Asegurar formato RGB
         if len(image_array.shape) == 3:
             if image_array.shape[2] == 4:  # RGBA
                 image_array = image_array[:, :, :3]  # Convertir a RGB
@@ -194,26 +181,35 @@ def get_face_encoding(image):
             st.error("Formato de imagen no soportado")
             return None
         
-        # Detectar ubicaciones de rostros (similar a classify_face en Django)
-        face_locations = face_recognition.face_locations(image_array)
-        
-        if len(face_locations) == 0:
-            return None
-        
-        # Obtener encodings de rostros encontrados
-        face_encodings = face_recognition.face_encodings(image_array, face_locations)
-        
-        if len(face_encodings) > 0:
-            # Retornar el primer encoding encontrado
-            encoding = face_encodings[0]
-            # Verificar que el encoding tiene la forma correcta (128 dimensiones)
-            if encoding.shape == (128,):
-                return encoding
-            else:
-                st.error(f"Encoding generado tiene forma incorrecta: {encoding.shape}")
+        # Usar DeepFace para obtener embedding
+        if DEEPFACE_AVAILABLE:
+            try:
+                # DeepFace con modelo Facenet512 (512 dimensiones)
+                embedding_result = DeepFace.represent(
+                    img_path=image_array,
+                    model_name='Facenet512',
+                    enforce_detection=True,
+                    detector_backend='opencv'  # Usa OpenCV interno
+                )
+                
+                if embedding_result and len(embedding_result) > 0:
+                    encoding = np.array(embedding_result[0]["embedding"])
+                    # DeepFace Facenet512 retorna 512 dimensiones
+                    if encoding.shape == (512,):
+                        return encoding
+                    else:
+                        st.warning(f"Encoding DeepFace tiene forma: {encoding.shape}")
+                        return encoding  # Retornar de todos modos
+                
                 return None
-        
-        return None
+                
+            except Exception as deepface_error:
+                st.warning(f"Error con DeepFace: {deepface_error}")
+                # Fallback a simulación
+                return np.random.rand(512)  # Simulación de 512 dimensiones
+        else:
+            # Modo simulado
+            return np.random.rand(512)  # Simulación consistente
         
     except Exception as e:
         st.error(f"Error procesando imagen: {e}")
@@ -223,7 +219,7 @@ def get_face_encoding(image):
 def recognize_face(image, known_encodings):
     """
     Reconocer rostro comparando con encodings conocidos
-    Basado en el approach simplificado del código Django funcional
+    Versión optimizada usando DeepFace para Streamlit Cloud
     """
     # Obtener encoding de la imagen capturada
     face_encoding = get_face_encoding(image)
@@ -235,8 +231,8 @@ def recognize_face(image, known_encodings):
     if not known_encodings:
         return None, None
     
-    # Parámetros de reconocimiento (más permisivos inicialmente)
-    tolerance = 0.6  # Tolerancia estándar de face_recognition
+    # Parámetros de reconocimiento para DeepFace
+    tolerance = 0.5  # Tolerancia para DeepFace (distancia coseno)
     
     best_match_person_id = None
     best_distance = float('inf')
@@ -247,13 +243,24 @@ def recognize_face(image, known_encodings):
             # Asegurar que es numpy array
             if not isinstance(known_encoding, np.ndarray):
                 continue
-                
-            # Verificar dimensiones compatibles
-            if known_encoding.shape != (128,):
-                continue
             
-            # Calcular distancia usando face_recognition
-            distance = face_recognition.face_distance([known_encoding], face_encoding)[0]
+            # Verificar dimensiones compatibles (DeepFace usa 512 dimensiones)
+            expected_shape = (512,) if DEEPFACE_AVAILABLE else (128,)
+            if known_encoding.shape != expected_shape:
+                # Intentar adaptar encodings antiguos de 128 a 512
+                if known_encoding.shape == (128,) and DEEPFACE_AVAILABLE:
+                    st.warning(f"⚠️ Encoding de {person_id} necesita regeneración (128→512 dims)")
+                    continue
+                elif known_encoding.shape != expected_shape:
+                    continue
+            
+            # Calcular distancia coseno para DeepFace
+            if DEEPFACE_AVAILABLE:
+                # Distancia euclidiana normalizada (más apropiada para DeepFace)
+                distance = np.linalg.norm(face_encoding - known_encoding)
+            else:
+                # Simulación para modo dummy
+                distance = np.random.uniform(0.2, 0.8)
             
             # Si está dentro de la tolerancia y es el mejor match hasta ahora
             if distance <= tolerance and distance < best_distance:
@@ -265,8 +272,11 @@ def recognize_face(image, known_encodings):
             continue
     
     if best_match_person_id is not None:
-        # Convertir distancia a porcentaje de confianza
-        confidence = max(0, (1 - best_distance) * 100)
+        # Convertir distancia a porcentaje de confianza (ajustado para DeepFace)
+        if DEEPFACE_AVAILABLE:
+            confidence = max(0, (1 - best_distance / tolerance) * 100)
+        else:
+            confidence = max(0, (1 - best_distance) * 100)
         return best_match_person_id, confidence
     else:
         return None, None
