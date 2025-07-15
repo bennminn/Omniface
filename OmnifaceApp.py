@@ -24,14 +24,14 @@ import pickle
 import io
 from database_manager import get_db_manager
 
-# Intentar importar OpenCV para mejor precisión
+# Intentar importar OpenCV para mejor precisión (opcional)
 try:
     import cv2
     OPENCV_AVAILABLE = True
     st.success("✅ OpenCV disponible - Mayor precisión en detección")
 except ImportError as e:
-    st.warning(f"⚠️ OpenCV no disponible: {e}")
     OPENCV_AVAILABLE = False
+    # No mostrar warning para deployment limpio
 
 # Importar manejador robusto de DeepFace
 from deepface_handler import initialize_deepface, get_deepface_instance, is_deepface_available
