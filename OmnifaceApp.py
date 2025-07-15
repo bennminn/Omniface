@@ -334,6 +334,157 @@ def get_averaged_face_encoding(images):
         st.error(f"Error procesando múltiples imágenes: {e}")
         return None
 
+# Función de diagnóstico para problemas de reconocimiento
+def debug_recognition_system(image, known_encodings):
+    """
+    Diagnóstico completo del sistema de reconocimiento para identificar problemas
+    """
+    st.write("## 🔍 **DIAGNÓSTICO DEL SISTEMA DE RECONOCIMIENTO**")
+    st.write("---")
+    
+    # 1. Verificar estado de DeepFace
+    st.write("### 1️⃣ **Estado de DeepFace:**")
+    st.write(f"- DEEPFACE_AVAILABLE: {DEEPFACE_AVAILABLE}")
+    st.write(f"- Instancia DeepFace: {type(DeepFace)}")
+    
+    # 2. Probar extracción de encoding
+    st.write("### 2️⃣ **Extracción de Encoding:**")
+    try:
+        face_encoding = get_face_encoding(image)
+        if face_encoding is not None:
+            st.success(f"✅ Encoding extraído correctamente")
+            st.write(f"- Shape: {face_encoding.shape}")
+            st.write(f"- Tipo: {type(face_encoding)}")
+            st.write(f"- Sample: [{face_encoding[0]:.4f}, {face_encoding[1]:.4f}, {face_encoding[2]:.4f}, ...]")
+            
+            # Verificar si es simulado (comparar con valores aleatorios típicos)
+            if np.all(face_encoding >= 0) and np.all(face_encoding <= 1) and np.std(face_encoding) < 0.4:
+                st.warning("⚠️ **POSIBLE SIMULACIÓN**: Encoding parece ser aleatorio")
+            else:
+                st.success("✅ Encoding parece ser real (no simulado)")
+        else:
+            st.error("❌ **PROBLEMA CRÍTICO**: No se pudo extraer encoding")
+            return None
+    except Exception as e:
+        st.error(f"❌ **ERROR EXTRAYENDO ENCODING**: {e}")
+        return None
+    
+    # 3. Verificar encodings conocidos
+    st.write("### 3️⃣ **Encodings Conocidos:**")
+    if not known_encodings:
+        st.error("❌ **PROBLEMA CRÍTICO**: No hay encodings conocidos")
+        return None
+    
+    st.write(f"- Total encodings: {len(known_encodings)}")
+    
+    valid_encodings = 0
+    for person_id, known_encoding in known_encodings.items():
+        if isinstance(known_encoding, np.ndarray) and known_encoding.shape == (512,):
+            valid_encodings += 1
+            st.write(f"  ✅ {person_id}: Shape {known_encoding.shape}")
+        else:
+            st.write(f"  ❌ {person_id}: Inválido - {type(known_encoding)} - {getattr(known_encoding, 'shape', 'Sin shape')}")
+    
+    st.write(f"- Encodings válidos: {valid_encodings}/{len(known_encodings)}")
+    
+    # 4. Probar diferentes modelos si Facenet512 falla
+    st.write("### 4️⃣ **Prueba de Modelos Alternativos:**")
+    
+    models_to_test = [
+        ('VGG-Face', 2622),
+        ('Facenet', 128), 
+        ('ArcFace', 512),
+        ('OpenFace', 128)
+    ]
+    
+    working_models = []
+    image_array = np.array(image)
+    
+    for model_name, expected_dims in models_to_test:
+        try:
+            st.write(f"🧪 Probando {model_name}...")
+            
+            embedding_result = DeepFace.represent(
+                img_path=image_array,
+                model_name=model_name,
+                enforce_detection=False  # Menos estricto para pruebas
+            )
+            
+            if embedding_result:
+                encoding = np.array(embedding_result[0]["embedding"])
+                st.success(f"✅ {model_name} funciona - Shape: {encoding.shape}")
+                working_models.append((model_name, encoding.shape[0]))
+            else:
+                st.warning(f"⚠️ {model_name} no devolvió resultado")
+                
+        except Exception as e:
+            st.error(f"❌ {model_name} falló: {str(e)[:100]}")
+    
+    # 5. Prueba de comparación con diferentes tolerancias
+    st.write("### 5️⃣ **Prueba de Tolerancias:**")
+    
+    tolerances = [1.0, 0.8, 0.6, 0.5, 0.4, 0.3]
+    best_matches = []
+    
+    for tolerance in tolerances:
+        best_distance = float('inf')
+        best_person = None
+        
+        for person_id, known_encoding in known_encodings.items():
+            if isinstance(known_encoding, np.ndarray) and known_encoding.shape == (512,):
+                try:
+                    distance = np.linalg.norm(face_encoding - known_encoding)
+                    if distance < best_distance:
+                        best_distance = distance
+                        best_person = person_id
+                except:
+                    continue
+        
+        recognized = best_distance < tolerance
+        confidence = max(0, (1 - best_distance / tolerance) * 100) if recognized else 0
+        
+        status = "✅" if recognized else "❌"
+        st.write(f"  {status} Tolerancia {tolerance}: Distancia {best_distance:.4f} → {'RECONOCIDO' if recognized else 'NO RECONOCIDO'} ({confidence:.1f}%)")
+        
+        if recognized:
+            best_matches.append((tolerance, best_person, best_distance, confidence))
+    
+    # 6. Recomendaciones
+    st.write("### 6️⃣ **Diagnóstico y Recomendaciones:**")
+    
+    if not working_models:
+        st.error("🚨 **PROBLEMA CRÍTICO**: Ningún modelo de DeepFace funciona")
+        st.error("**Posibles causas:**")
+        st.error("- DeepFace no se inicializó correctamente")
+        st.error("- Problemas con TensorFlow/Keras")
+        st.error("- Modo simulado activado sin darse cuenta")
+        
+    elif not best_matches:
+        st.error("🚨 **PROBLEMA DE RECONOCIMIENTO**: Ninguna tolerancia reconoce al usuario")
+        st.error("**Posibles causas:**")
+        st.error("- Los encodings de registro y reconocimiento son muy diferentes")
+        st.error("- Problema con la calidad de las imágenes")
+        st.error("- El modelo cambió entre registro y reconocimiento")
+        
+        # Sugerir tolerancia
+        if 'best_distance' in locals() and best_distance != float('inf'):
+            suggested_tolerance = best_distance + 0.1
+            st.info(f"💡 **Sugerencia**: Prueba tolerancia {suggested_tolerance:.2f}")
+            
+    else:
+        st.success("✅ **SISTEMA FUNCIONANDO**: El reconocimiento funciona con ajustes")
+        st.success("**Tolerancias que funcionan:**")
+        for tolerance, person, distance, confidence in best_matches:
+            st.success(f"  - Tolerancia {tolerance}: {person} (Confianza: {confidence:.1f}%)")
+        
+        # Recomendar tolerancia profesional
+        professional_matches = [m for m in best_matches if m[3] >= 85]  # Confianza >= 85%
+        if professional_matches:
+            best_professional = min(professional_matches, key=lambda x: x[0])  # Tolerancia más estricta
+            st.info(f"🎯 **Recomendación Profesional**: Tolerancia {best_professional[0]} (Confianza: {best_professional[3]:.1f}%)")
+    
+    return best_matches
+
 # Función auxiliar para procesar múltiples imágenes (registro avanzado)
 def process_advanced_person(person_id, person_name, image_sources):
     """Procesar y agregar una nueva persona usando múltiples imágenes"""
@@ -668,6 +819,9 @@ elif page == "🎥 Reconocimiento Facial":
         with col1:
             st.subheader("📷 Capturar Imagen")
             
+            # Activar modo diagnóstico
+            debug_mode = st.checkbox("🔍 **Modo Diagnóstico** (para solucionar problemas de reconocimiento)", value=False)
+            
             # Captura de imagen con cámara
             camera_input = st.camera_input("Toma una foto para reconocimiento facial:")
             
@@ -676,9 +830,25 @@ elif page == "🎥 Reconocimiento Facial":
                 image = Image.open(camera_input)
                 st.image(image, caption="Imagen capturada")
                 
-                # Realizar reconocimiento
-                with st.spinner("🔍 Analizando rostro..."):
-                    person_id, confidence = recognize_face(image, encodings)
+                if debug_mode:
+                    # Ejecutar diagnóstico completo
+                    st.write("---")
+                    debug_matches = debug_recognition_system(image, encodings)
+                    
+                    if debug_matches:
+                        st.write("### 🛠️ **Aplicar Corrección Automática**")
+                        best_match = debug_matches[0]  # Mejor tolerancia
+                        if st.button(f"✅ Usar tolerancia {best_match[0]} (Reconoce como {best_match[1]})"):
+                            # Aplicar reconocimiento con tolerancia sugerida
+                            person_id, confidence = best_match[1], best_match[3]
+                        else:
+                            person_id, confidence = None, None
+                    else:
+                        person_id, confidence = None, None
+                else:
+                    # Reconocimiento normal
+                    with st.spinner("🔍 Analizando rostro..."):
+                        person_id, confidence = recognize_face(image, encodings)
                 
                 if person_id is not None:
                     # Buscar información de la persona
