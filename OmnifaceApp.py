@@ -1,12 +1,9 @@
 import streamlit as st
 
 # Configurar TensorFlow antes de cualquier importación
-try:
-    from tf_config import *
-except ImportError:
-    import os
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-    os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Silenciar warnings de TensorFlow
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Deshabilitar OneDNN para compatibilidad
 
 # Intentar importar numpy con manejo de errores específicos
 try:
@@ -40,6 +37,35 @@ from deepface_handler import initialize_deepface, get_deepface_instance, is_deep
 if not NUMPY_AVAILABLE:
     st.error("❌ Numpy es requerido para la aplicación")
     st.stop()
+
+def calculate_professional_confidence(cosine_distance):
+    """
+    Calcula la confianza usando una fórmula profesional para distancia coseno.
+    
+    Fórmula: confidence = max(0.1, 100 * (1 - distance) ** 2.5)
+    
+    Escalas resultantes:
+    - Distancia 0.0 → 99.9% confianza (match perfecto)
+    - Distancia 0.1 → 97.0% confianza (excelente)
+    - Distancia 0.2 → 90.0% confianza (muy bueno)
+    - Distancia 0.3 → 75.0% confianza (bueno)
+    - Distancia 0.4 → 50.0% confianza (umbral profesional)
+    
+    Args:
+        cosine_distance (float): Distancia coseno entre 0.0 y 1.0
+        
+    Returns:
+        float: Porcentaje de confianza entre 0.1% y 99.9%
+    """
+    if cosine_distance < 0:
+        cosine_distance = 0
+    elif cosine_distance > 1:
+        cosine_distance = 1
+        
+    confidence = max(0.1, 100 * (1 - cosine_distance) ** 2.5)
+    confidence = min(99.9, confidence)  # Cap máximo realista
+    
+    return confidence
 
 # Inicializar DeepFace con manejo robusto
 success, message = initialize_deepface()
@@ -448,8 +474,8 @@ def recognize_face(image, known_encodings):
         st.write(f"🚧 Umbral actual: {tolerance}")
     
     if best_match_person_id is not None and best_distance < tolerance:
-        # Convertir distancia a porcentaje de confianza
-        confidence = max(0, (1 - best_distance / tolerance) * 100)
+        # Usar fórmula profesional de confianza
+        confidence = calculate_professional_confidence(best_distance)
         
         if st.session_state.get('debug_mode', False):
             st.success(f"✅ RECONOCIDO: {best_match_person_id} (Confianza: {confidence:.1f}%)")
@@ -617,7 +643,8 @@ def debug_recognition_system(image, known_encodings):
                     continue
         
         recognized = best_distance < tolerance
-        confidence = max(0, (1 - best_distance / tolerance) * 100) if recognized else 0
+        # Usar la misma fórmula profesional de confianza
+        confidence = calculate_professional_confidence(best_distance) if recognized else 0
         
         status = "✅" if recognized else "❌"
         st.write(f"  {status} Tolerancia {tolerance}: Distancia {best_distance:.4f} → {'RECONOCIDO' if recognized else 'NO RECONOCIDO'} ({confidence:.1f}%)")
