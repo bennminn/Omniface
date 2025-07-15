@@ -1,8 +1,8 @@
-streamlit==1.28.1
-numpy==1.24.3
-pillow==9.4.0
-pandas==1.5.3
-tensorflow==2.12.0
-deepface==0.0.75
-supabase==1.0.3
-python-dotenv==1.0.0
+streamlit
+numpy
+pillow
+pandas
+tensorflow>=2.13.0
+deepface
+supabase
+python-dotenv
