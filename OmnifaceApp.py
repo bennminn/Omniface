@@ -161,8 +161,8 @@ def save_person_complete(person_id, name, image, encoding):
 # Función para procesar imagen y obtener codificación facial
 def get_face_encoding(image):
     """
-    Procesar imagen y obtener codificación facial usando DeepFace
-    Versión optimizada y precavida para Streamlit Cloud
+    FORZAR uso exclusivo de Facenet512 para compatibilidad total
+    Garantiza encodings de 512 dimensiones compatibles con la base de datos
     """
     try:
         # Convertir imagen PIL a array numpy en formato RGB
@@ -196,48 +196,50 @@ def get_face_encoding(image):
                 st.warning(f"Error en preprocesamiento OpenCV: {cv_error}")
                 # Continuar con imagen original
         
-        # Usar DeepFace para obtener embedding
+        # USAR ÚNICAMENTE FACENET512 - SIN ALTERNATIVAS NI FALLBACK
         if DEEPFACE_AVAILABLE:
             try:
-                # Elegir backend de detección según disponibilidad
-                detector_backend = 'opencv' if OPENCV_AVAILABLE else 'ssd'
+                st.info("🎯 Usando Facenet512 (mismo modelo que registro)")
                 
-                # DeepFace con modelo Facenet512 (512 dimensiones)
+                # DeepFace con modelo Facenet512 FORZADO
                 embedding_result = DeepFace.represent(
                     img_path=image_array,
-                    model_name='Facenet512',
+                    model_name='Facenet512',  # ← FORZAR Facenet512 EXCLUSIVAMENTE
                     enforce_detection=True,
-                    detector_backend=detector_backend
+                    detector_backend='opencv' if OPENCV_AVAILABLE else 'ssd'
                 )
                 
                 if embedding_result and len(embedding_result) > 0:
                     encoding = np.array(embedding_result[0]["embedding"])
-                    # DeepFace Facenet512 retorna 512 dimensiones
+                    
+                    # VERIFICAR QUE SEA EXACTAMENTE 512D
                     if encoding.shape == (512,):
+                        st.success(f"✅ Encoding Facenet512 extraído: {encoding.shape}")
                         return encoding
                     else:
-                        st.warning(f"Encoding DeepFace tiene forma: {encoding.shape}")
-                        return encoding  # Retornar de todos modos
-                
-                return None
-                
+                        st.error(f"❌ Facenet512 devolvió {encoding.shape} en lugar de (512,)")
+                        return None
+                else:
+                    st.error("❌ Facenet512 no pudo procesar la imagen")
+                    return None
+                    
             except Exception as deepface_error:
-                st.warning(f"Error con DeepFace: {deepface_error}")
-                # Fallback a simulación
-                return np.random.rand(512)  # Simulación de 512 dimensiones
+                st.error(f"❌ Error crítico con Facenet512: {deepface_error}")
+                st.error("🔧 Problema: Facenet512 no está disponible en este entorno")
+                return None
         else:
-            # Modo simulado
-            return np.random.rand(512)  # Simulación consistente
+            st.error("❌ DeepFace no está disponible - No se puede procesar")
+            return None
         
     except Exception as e:
-        st.error(f"Error procesando imagen: {e}")
+        st.error(f"❌ Error procesando imagen: {e}")
         return None
 
 # Función para reconocer rostro
 def recognize_face(image, known_encodings):
     """
     Reconocer rostro comparando con encodings conocidos
-    Versión optimizada usando DeepFace para Streamlit Cloud
+    Versión corregida con tolerancia ajustada para Facenet512
     """
     # Obtener encoding de la imagen capturada
     face_encoding = get_face_encoding(image)
@@ -249,8 +251,8 @@ def recognize_face(image, known_encodings):
     if not known_encodings:
         return None, None
     
-    # Parámetros de reconocimiento para DeepFace
-    tolerance = 0.5  # Tolerancia para DeepFace (distancia coseno)
+    # TOLERANCIA AJUSTADA PARA FACENET512 basada en diagnóstico real
+    tolerance = 10.0  # Basado en distancia observada de 8.9056
     
     best_match_person_id = None
     best_distance = float('inf')
@@ -258,30 +260,22 @@ def recognize_face(image, known_encodings):
     # Comparar con cada encoding conocido
     for person_id, known_encoding in known_encodings.items():
         try:
-            # Asegurar que es numpy array
+            # Asegurar que es numpy array con 512 dimensiones
             if not isinstance(known_encoding, np.ndarray):
                 continue
             
-            # Verificar dimensiones compatibles (DeepFace usa 512 dimensiones)
-            expected_shape = (512,) if DEEPFACE_AVAILABLE else (128,)
-            if known_encoding.shape != expected_shape:
-                # Intentar adaptar encodings antiguos de 128 a 512
-                if known_encoding.shape == (128,) and DEEPFACE_AVAILABLE:
-                    st.warning(f"⚠️ Encoding de {person_id} necesita regeneración (128→512 dims)")
-                    continue
-                elif known_encoding.shape != expected_shape:
-                    continue
+            if known_encoding.shape != (512,):
+                st.warning(f"⚠️ Encoding de {person_id} necesita regeneración ({known_encoding.shape} != (512,))")
+                continue
             
-            # Calcular distancia coseno para DeepFace
-            if DEEPFACE_AVAILABLE:
-                # Distancia euclidiana normalizada (más apropiada para DeepFace)
-                distance = np.linalg.norm(face_encoding - known_encoding)
-            else:
-                # Simulación para modo dummy
-                distance = np.random.uniform(0.2, 0.8)
+            # Calcular distancia euclidiana para Facenet512
+            distance = np.linalg.norm(face_encoding - known_encoding)
             
-            # Si está dentro de la tolerancia y es el mejor match hasta ahora
-            if distance <= tolerance and distance < best_distance:
+            # Debug de distancias (mostrar solo en modo diagnóstico)
+            if st.session_state.get('debug_mode', False):
+                st.write(f"🔍 {person_id}: Distancia = {distance:.4f}")
+            
+            if distance < best_distance:
                 best_distance = distance
                 best_match_person_id = person_id
         
@@ -289,14 +283,23 @@ def recognize_face(image, known_encodings):
             # Silenciosamente continuar con el siguiente encoding
             continue
     
-    if best_match_person_id is not None:
-        # Convertir distancia a porcentaje de confianza (ajustado para DeepFace)
-        if DEEPFACE_AVAILABLE:
-            confidence = max(0, (1 - best_distance / tolerance) * 100)
-        else:
-            confidence = max(0, (1 - best_distance) * 100)
+    # Debug del mejor match
+    if st.session_state.get('debug_mode', False):
+        st.write(f"📊 Mejor match: {best_match_person_id} con distancia {best_distance:.4f}")
+        st.write(f"🚧 Umbral actual: {tolerance}")
+    
+    if best_match_person_id is not None and best_distance < tolerance:
+        # Convertir distancia a porcentaje de confianza
+        confidence = max(0, (1 - best_distance / tolerance) * 100)
+        
+        if st.session_state.get('debug_mode', False):
+            st.success(f"✅ RECONOCIDO: {best_match_person_id} (Confianza: {confidence:.1f}%)")
+        
         return best_match_person_id, confidence
     else:
+        if st.session_state.get('debug_mode', False):
+            st.error(f"❌ NO RECONOCIDO: Distancia {best_distance:.4f} > {tolerance}")
+        
         return None, None
 
 # Función para procesar múltiples imágenes y crear encoding promediado
@@ -821,6 +824,9 @@ elif page == "🎥 Reconocimiento Facial":
             
             # Activar modo diagnóstico
             debug_mode = st.checkbox("🔍 **Modo Diagnóstico** (para solucionar problemas de reconocimiento)", value=False)
+            
+            # Guardar estado del modo debug
+            st.session_state.debug_mode = debug_mode
             
             # Captura de imagen con cámara
             camera_input = st.camera_input("Toma una foto para reconocimiento facial:")
