@@ -404,8 +404,8 @@ def recognize_face(image, known_encodings):
     if not known_encodings:
         return None, None
     
-    # TOLERANCIA PROFESIONAL PARA FACENET512 
-    tolerance = 0.6  # Tolerancia estándar profesional (se ajustará si hay incompatibilidades)
+    # TOLERANCIA PROFESIONAL PARA FACENET512 con DISTANCIA COSENO
+    tolerance = 0.4  # Para distancia coseno: 0.0=idéntico, 0.4=similar, 0.6=diferente, 1.0+=muy diferente
     
     best_match_person_id = None
     best_distance = float('inf')
@@ -421,8 +421,14 @@ def recognize_face(image, known_encodings):
                 st.warning(f"⚠️ Encoding de {person_id} necesita regeneración ({known_encoding.shape} != (512,))")
                 continue
             
-            # Calcular distancia euclidiana para Facenet512
-            distance = np.linalg.norm(face_encoding - known_encoding)
+            # Calcular distancia COSENO para Facenet512 (más apropiada que euclidiana)
+            # Normalizar vectores
+            face_norm = face_encoding / np.linalg.norm(face_encoding)
+            known_norm = known_encoding / np.linalg.norm(known_encoding)
+            
+            # Distancia coseno: 1 - cosine_similarity
+            cosine_similarity = np.dot(face_norm, known_norm)
+            distance = 1 - cosine_similarity  # Distancia coseno [0-2]
             
             # Debug de distancias (mostrar solo en modo diagnóstico)
             if st.session_state.get('debug_mode', False):
@@ -451,7 +457,7 @@ def recognize_face(image, known_encodings):
         return best_match_person_id, confidence
     else:
         # Si falla con tolerancia profesional, mostrar warning y sugerir regeneración
-        if best_distance > 5.0:  # Distancia anormalmente alta
+        if best_distance > 0.8:  # Distancia coseno anormalmente alta (0.8+ indica incompatibilidad)
             if st.session_state.get('debug_mode', False):
                 st.error(f"❌ INCOMPATIBILIDAD DE MODELOS: Distancia {best_distance:.4f} es anormalmente alta")
                 st.warning("🔧 SOLUCIÓN: Los encodings necesitan regeneración forzada")
@@ -588,7 +594,7 @@ def debug_recognition_system(image, known_encodings):
     # 5. Prueba de comparación con diferentes tolerancias
     st.write("### 5️⃣ **Prueba de Tolerancias:**")
     
-    tolerances = [1.0, 0.8, 0.6, 0.5, 0.4, 0.3]
+    tolerances = [0.6, 0.5, 0.4, 0.3, 0.2, 0.1]  # Tolerancias apropiadas para distancia coseno
     best_matches = []
     
     for tolerance in tolerances:
@@ -598,7 +604,12 @@ def debug_recognition_system(image, known_encodings):
         for person_id, known_encoding in known_encodings.items():
             if isinstance(known_encoding, np.ndarray) and known_encoding.shape == (512,):
                 try:
-                    distance = np.linalg.norm(face_encoding - known_encoding)
+                    # Usar misma métrica que recognize_face: distancia coseno
+                    face_norm = face_encoding / np.linalg.norm(face_encoding)
+                    known_norm = known_encoding / np.linalg.norm(known_encoding)
+                    cosine_similarity = np.dot(face_norm, known_norm)
+                    distance = 1 - cosine_similarity
+                    
                     if distance < best_distance:
                         best_distance = distance
                         best_person = person_id
@@ -1102,9 +1113,10 @@ elif page == "📊 Estadísticas":
     
     - **Tecnología:** DeepFace + Facenet512 + Supabase
     - **Modelo:** Facenet512 (512 dimensiones)
+    - **Métrica:** Distancia Coseno (optimizada para embeddings)
     - **Base de datos:** Supabase (PostgreSQL)
     - **Almacenamiento:** Cloud (persistente)
-    - **Tolerancia profesional:** 0.6 (alta precisión)
+    - **Tolerancia profesional:** 0.4 (alta precisión)
     - **Confianza mínima:** 85%
     - **Formatos soportados:** JPG, JPEG, PNG
     - **Deploy:** Compatible con Streamlit Cloud
@@ -1117,8 +1129,8 @@ elif page == "📊 Estadísticas":
     
     with col_admin1:
         st.write("**🔄 Regenerar Encodings Forzadamente**")
-        st.info("REGENERA TODOS los encodings con Facenet512 para garantizar compatibilidad y tolerancias profesionales (0.6)")
-        st.warning("⚠️ IMPORTANTE: Si las distancias son > 5.0, los encodings tienen incompatibilidades críticas")
+        st.info("REGENERA TODOS los encodings con Facenet512 para garantizar compatibilidad y tolerancias profesionales (0.4 distancia coseno)")
+        st.warning("⚠️ IMPORTANTE: Si las distancias son > 0.8, los encodings tienen incompatibilidades críticas")
         if st.button("🔄 Regenerar Todos", type="primary"):
             with st.spinner("Regenerando TODOS los encodings con Facenet512..."):
                 regenerated, failed, total = regenerate_all_incompatible_encodings()
@@ -1126,7 +1138,7 @@ elif page == "📊 Estadísticas":
                     st.success(f"✅ Se regeneraron {regenerated}/{total} encodings con Facenet512")
                     if failed > 0:
                         st.warning(f"⚠️ {failed} encodings fallaron")
-                    st.success("🎯 Ahora el sistema debería usar tolerancias profesionales (0.6)")
+                    st.success("🎯 Ahora el sistema debería usar tolerancias profesionales (0.4 distancia coseno)")
                     st.info("🔄 Recargando página...")
                     st.rerun()
                 else:
@@ -1137,7 +1149,7 @@ elif page == "📊 Estadísticas":
         
         st.markdown("---")
         st.write("**🚨 REGENERACIÓN SUPER AGRESIVA**")
-        st.error("🚨 SOLO usar si las distancias son > 5.0 (incompatibilidad crítica)")
+        st.error("🚨 SOLO usar si las distancias coseno son > 0.8 (incompatibilidad crítica)")
         st.warning("⚠️ Elimina y recrea TODOS los encodings desde cero con configuración específica")
         if st.button("🚨 REGENERACIÓN SUPER AGRESIVA", type="primary"):
             with st.spinner("🚨 EJECUTANDO REGENERACIÓN SUPER AGRESIVA..."):
@@ -1147,7 +1159,7 @@ elif page == "📊 Estadísticas":
                     st.success(f"✅ {regenerated}/{total} encodings regenerados con configuración específica")
                     if failed > 0:
                         st.warning(f"⚠️ {failed} encodings fallaron")
-                    st.success("🎯 Las distancias deberían ser ahora < 0.6 (profesional)")
+                    st.success("🎯 Las distancias coseno deberían ser ahora < 0.4 (profesional)")
                     st.info("🔄 Recargando página...")
                     st.rerun()
                 else:
