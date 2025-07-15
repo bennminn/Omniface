@@ -3,6 +3,15 @@ Módulo para manejo robusto de DeepFace con fallback
 """
 import numpy as np
 
+# Configurar TensorFlow para reducir warnings
+try:
+    from tf_config import *
+except ImportError:
+    # Configuración básica si tf_config no está disponible
+    import os
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+    os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
 # Variables globales para estado
 DEEPFACE_AVAILABLE = False
 TENSORFLOW_VERSION = None

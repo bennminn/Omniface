@@ -1,5 +1,13 @@
 import streamlit as st
 
+# Configurar TensorFlow antes de cualquier importación
+try:
+    from tf_config import *
+except ImportError:
+    import os
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+    os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
 # Intentar importar numpy con manejo de errores específicos
 try:
     import numpy as np
