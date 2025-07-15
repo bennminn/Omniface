@@ -202,6 +202,92 @@ def regenerate_all_incompatible_encodings():
     
     return regenerated_count, failed_count, total_persons
 
+# Función para regeneración super agresiva
+def force_regenerate_all_with_facenet512():
+    """
+    REGENERACIÓN SUPER AGRESIVA: Eliminar y recrear TODOS los encodings
+    Soluciona incompatibilidades críticas cuando las distancias son > 5.0
+    """
+    database = load_database()
+    
+    if database.empty:
+        return 0, 0, 0
+    
+    st.error("🚨 INICIANDO REGENERACIÓN SUPER AGRESIVA")
+    st.warning("⚠️ Esto eliminará y recreará TODOS los encodings con Facenet512")
+    
+    regenerated_count = 0
+    failed_count = 0
+    total_persons = len(database)
+    
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    for idx, (_, row) in enumerate(database.iterrows()):
+        person_id = str(row['id'])
+        person_name = row['nombre']
+        
+        progress = (idx + 1) / total_persons
+        progress_bar.progress(progress)
+        status_text.text(f"🔄 FORZANDO regeneración: {person_name} ({idx + 1}/{total_persons})")
+        
+        try:
+            # 1. ELIMINAR encoding existente completamente
+            db_manager.delete_person_encoding(person_id)
+            
+            # 2. Obtener imagen original
+            image = db_manager.get_person_image(person_id)
+            if image is None:
+                st.error(f"❌ {person_name}: Sin imagen")
+                failed_count += 1
+                continue
+            
+            # 3. FORZAR Facenet512 con configuración específica
+            image_array = np.array(image)
+            
+            try:
+                # Configuración específica y forzada para Facenet512
+                embedding_result = DeepFace.represent(
+                    img_path=image_array,
+                    model_name='Facenet512',  # FORZAR
+                    enforce_detection=True,
+                    detector_backend='opencv',  # Específico
+                    align=True,  # Alineación facial
+                    normalization='base'  # Normalización específica
+                )
+                
+                if embedding_result and len(embedding_result) > 0:
+                    new_encoding = np.array(embedding_result[0]["embedding"])
+                    
+                    # Verificar que sea exactamente 512D
+                    if new_encoding.shape == (512,):
+                        # 4. Guardar nuevo encoding
+                        if db_manager.update_person_encoding(person_id, new_encoding):
+                            regenerated_count += 1
+                            st.success(f"✅ {person_name}: REGENERADO con Facenet512")
+                        else:
+                            st.error(f"❌ {person_name}: Error guardando")
+                            failed_count += 1
+                    else:
+                        st.error(f"❌ {person_name}: Dimensiones incorrectas {new_encoding.shape}")
+                        failed_count += 1
+                else:
+                    st.error(f"❌ {person_name}: Facenet512 no procesó")
+                    failed_count += 1
+                    
+            except Exception as e:
+                st.error(f"❌ {person_name}: Error Facenet512 - {str(e)[:100]}")
+                failed_count += 1
+                
+        except Exception as e:
+            st.error(f"❌ {person_name}: Error general - {str(e)[:100]}")
+            failed_count += 1
+    
+    progress_bar.empty()
+    status_text.empty()
+    
+    return regenerated_count, failed_count, total_persons
+
 # Función para limpiar encodings incompatibles
 def clean_incompatible_encodings():
     """Eliminar todos los encodings incompatibles de la base de datos"""
@@ -253,7 +339,7 @@ def get_face_encoding(image):
                 
                 # Aplicar filtros para mejorar la calidad
                 image_bgr = cv2.bilateralFilter(image_bgr, 9, 75, 75)  # Reducir ruido
-                image_bgr = cv2.convertScaleAbs(image_bgr, alpha=1.1, beta=10)  # Mejorar contraste
+                image_bgr = cv2.convertScaleAbs(image_bgr, alpha=1.1, beta=10)  # Mejor
                 
                 # Convertir de vuelta a RGB para DeepFace
                 image_array = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
@@ -266,12 +352,14 @@ def get_face_encoding(image):
             try:
                 st.info("🎯 Usando Facenet512 (mismo modelo que registro)")
                 
-                # DeepFace con modelo Facenet512 FORZADO
+                # DeepFace con modelo Facenet512 FORZADO - CONFIGURACIÓN IDÉNTICA A REGENERACIÓN
                 embedding_result = DeepFace.represent(
                     img_path=image_array,
                     model_name='Facenet512',  # ← FORZAR Facenet512 EXCLUSIVAMENTE
                     enforce_detection=True,
-                    detector_backend='opencv' if OPENCV_AVAILABLE else 'ssd'
+                    detector_backend='opencv',  # Específico - IGUAL que regeneración
+                    align=True,  # Alineación facial - IGUAL que regeneración
+                    normalization='base'  # Normalización específica - IGUAL que regeneración
                 )
                 
                 if embedding_result and len(embedding_result) > 0:
@@ -1046,6 +1134,27 @@ elif page == "📊 Estadísticas":
                         st.info("ℹ️ No hay usuarios registrados")
                     else:
                         st.error(f"❌ No se pudieron regenerar {failed} encodings")
+        
+        st.markdown("---")
+        st.write("**🚨 REGENERACIÓN SUPER AGRESIVA**")
+        st.error("🚨 SOLO usar si las distancias son > 5.0 (incompatibilidad crítica)")
+        st.warning("⚠️ Elimina y recrea TODOS los encodings desde cero con configuración específica")
+        if st.button("🚨 REGENERACIÓN SUPER AGRESIVA", type="primary"):
+            with st.spinner("🚨 EJECUTANDO REGENERACIÓN SUPER AGRESIVA..."):
+                regenerated, failed, total = force_regenerate_all_with_facenet512()
+                if regenerated > 0:
+                    st.success(f"🎉 REGENERACIÓN SUPER AGRESIVA EXITOSA!")
+                    st.success(f"✅ {regenerated}/{total} encodings regenerados con configuración específica")
+                    if failed > 0:
+                        st.warning(f"⚠️ {failed} encodings fallaron")
+                    st.success("🎯 Las distancias deberían ser ahora < 0.6 (profesional)")
+                    st.info("🔄 Recargando página...")
+                    st.rerun()
+                else:
+                    if total == 0:
+                        st.info("ℹ️ No hay usuarios registrados")
+                    else:
+                        st.error(f"💥 REGENERACIÓN SUPER AGRESIVA FALLÓ - {failed} errores")
         
         st.write("**🗑️ Limpiar Encodings Incompatibles**")
         st.info("Elimina encodings con formato incorrecto (solo como último recurso)")
