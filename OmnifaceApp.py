@@ -117,25 +117,90 @@ def regenerate_person_encoding(person_id):
 
 # Función para regenerar todos los encodings incompatibles
 def regenerate_all_incompatible_encodings():
-    """Regenerar automáticamente todos los encodings incompatibles"""
+    """
+    REGENERACIÓN FORZADA: Regenerar TODOS los encodings usando Facenet512 
+    para garantizar compatibilidad y tolerancias profesionales
+    """
     encodings = db_manager.get_all_encodings()
-    invalid_persons = []
+    database = load_database()
     
-    for person_id, encoding in encodings.items():
-        if not isinstance(encoding, np.ndarray) or encoding.shape != (512,):
-            invalid_persons.append(person_id)
+    if database.empty:
+        return 0, 0, 0
+    
+    # REGENERAR TODOS (no solo incompatibles) para garantizar compatibilidad
+    st.info("🔄 REGENERACIÓN FORZADA: Procesando TODOS los usuarios para garantizar compatibilidad")
     
     regenerated_count = 0
     failed_count = 0
+    total_persons = len(database)
     
-    for person_id in invalid_persons:
-        success, message = regenerate_person_encoding(person_id)
-        if success:
-            regenerated_count += 1
-        else:
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    for idx, (_, row) in enumerate(database.iterrows()):
+        person_id = str(row['id'])
+        person_name = row['nombre']
+        
+        # Actualizar progreso
+        progress = (idx + 1) / total_persons
+        progress_bar.progress(progress)
+        status_text.text(f"🔄 Regenerando {person_name} ({idx + 1}/{total_persons})")
+        
+        try:
+            # Obtener imagen original
+            image = db_manager.get_person_image(person_id)
+            if image is None:
+                st.warning(f"⚠️ {person_name}: No se pudo cargar imagen")
+                failed_count += 1
+                continue
+            
+            # Generar encoding con Facenet512 FORZADO
+            if DEEPFACE_AVAILABLE:
+                try:
+                    image_array = np.array(image)
+                    
+                    # Forzar Facenet512 sin mensajes de info (modo silencioso)
+                    embedding_result = DeepFace.represent(
+                        img_path=image_array,
+                        model_name='Facenet512',
+                        enforce_detection=True,
+                        detector_backend='opencv' if OPENCV_AVAILABLE else 'ssd'
+                    )
+                    
+                    if embedding_result and len(embedding_result) > 0:
+                        new_encoding = np.array(embedding_result[0]["embedding"])
+                        
+                        if new_encoding.shape == (512,):
+                            # Actualizar encoding en la base de datos
+                            if db_manager.update_person_encoding(person_id, new_encoding):
+                                regenerated_count += 1
+                                st.success(f"✅ {person_name}: Encoding Facenet512 regenerado")
+                            else:
+                                st.error(f"❌ {person_name}: Error guardando en BD")
+                                failed_count += 1
+                        else:
+                            st.error(f"❌ {person_name}: Encoding inválido {new_encoding.shape}")
+                            failed_count += 1
+                    else:
+                        st.error(f"❌ {person_name}: No se pudo procesar imagen")
+                        failed_count += 1
+                        
+                except Exception as e:
+                    st.error(f"❌ {person_name}: Error DeepFace - {str(e)[:50]}")
+                    failed_count += 1
+            else:
+                st.error(f"❌ {person_name}: DeepFace no disponible")
+                failed_count += 1
+                
+        except Exception as e:
+            st.error(f"❌ {person_name}: Error general - {str(e)[:50]}")
             failed_count += 1
     
-    return regenerated_count, failed_count, len(invalid_persons)
+    # Limpiar progreso
+    progress_bar.empty()
+    status_text.empty()
+    
+    return regenerated_count, failed_count, total_persons
 
 # Función para limpiar encodings incompatibles
 def clean_incompatible_encodings():
@@ -251,8 +316,8 @@ def recognize_face(image, known_encodings):
     if not known_encodings:
         return None, None
     
-    # TOLERANCIA AJUSTADA PARA FACENET512 basada en diagnóstico real
-    tolerance = 10.0  # Basado en distancia observada de 8.9056
+    # TOLERANCIA PROFESIONAL PARA FACENET512 
+    tolerance = 0.6  # Tolerancia estándar profesional (se ajustará si hay incompatibilidades)
     
     best_match_person_id = None
     best_distance = float('inf')
@@ -297,7 +362,16 @@ def recognize_face(image, known_encodings):
         
         return best_match_person_id, confidence
     else:
-        if st.session_state.get('debug_mode', False):
+        # Si falla con tolerancia profesional, mostrar warning y sugerir regeneración
+        if best_distance > 5.0:  # Distancia anormalmente alta
+            if st.session_state.get('debug_mode', False):
+                st.error(f"❌ INCOMPATIBILIDAD DE MODELOS: Distancia {best_distance:.4f} es anormalmente alta")
+                st.warning("🔧 SOLUCIÓN: Los encodings necesitan regeneración forzada")
+                st.info("💡 Ve a Estadísticas → Regenerar Todos para corregir incompatibilidades")
+            else:
+                st.error("❌ No reconocido - Posible incompatibilidad de modelos")
+                st.info("🔧 Activa 'Modo Diagnóstico' para más detalles")
+        elif st.session_state.get('debug_mode', False):
             st.error(f"❌ NO RECONOCIDO: Distancia {best_distance:.4f} > {tolerance}")
         
         return None, None
@@ -938,11 +1012,12 @@ elif page == "📊 Estadísticas":
     st.info("""
     **Sistema de Reconocimiento Facial OmniFace v2.0**
     
-    - **Tecnología:** face_recognition + Supabase
+    - **Tecnología:** DeepFace + Facenet512 + Supabase
+    - **Modelo:** Facenet512 (512 dimensiones)
     - **Base de datos:** Supabase (PostgreSQL)
     - **Almacenamiento:** Cloud (persistente)
-    - **Tolerancia:** 0.25 (alta precisión)
-    - **Confianza mínima:** 90%
+    - **Tolerancia profesional:** 0.6 (alta precisión)
+    - **Confianza mínima:** 85%
     - **Formatos soportados:** JPG, JPEG, PNG
     - **Deploy:** Compatible con Streamlit Cloud
     """)
@@ -953,20 +1028,22 @@ elif page == "📊 Estadísticas":
     col_admin1, col_admin2 = st.columns(2)
     
     with col_admin1:
-        st.write("**🔄 Regenerar Encodings Automáticamente**")
-        st.info("Regenera automáticamente todos los encodings incompatibles usando las imágenes almacenadas")
+        st.write("**🔄 Regenerar Encodings Forzadamente**")
+        st.info("REGENERA TODOS los encodings con Facenet512 para garantizar compatibilidad y tolerancias profesionales (0.6)")
+        st.warning("⚠️ IMPORTANTE: Si las distancias son > 5.0, los encodings tienen incompatibilidades críticas")
         if st.button("🔄 Regenerar Todos", type="primary"):
-            with st.spinner("Regenerando encodings incompatibles..."):
+            with st.spinner("Regenerando TODOS los encodings con Facenet512..."):
                 regenerated, failed, total = regenerate_all_incompatible_encodings()
                 if regenerated > 0:
-                    st.success(f"✅ Se regeneraron {regenerated} encodings exitosamente")
+                    st.success(f"✅ Se regeneraron {regenerated}/{total} encodings con Facenet512")
                     if failed > 0:
-                        st.warning(f"⚠️ {failed} encodings no pudieron regenerarse")
+                        st.warning(f"⚠️ {failed} encodings fallaron")
+                    st.success("🎯 Ahora el sistema debería usar tolerancias profesionales (0.6)")
                     st.info("🔄 Recargando página...")
                     st.rerun()
                 else:
                     if total == 0:
-                        st.info("ℹ️ No se encontraron encodings incompatibles")
+                        st.info("ℹ️ No hay usuarios registrados")
                     else:
                         st.error(f"❌ No se pudieron regenerar {failed} encodings")
         
