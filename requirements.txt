@@ -2,7 +2,11 @@ streamlit
 numpy
 pillow
 pandas
-tensorflow>=2.13.0
-deepface
+tensorflow==2.16.1
+tf-keras==2.16.0
+deepface==0.0.92
 supabase
 python-dotenv
+protobuf==4.25.3
+gdown
+tqdm

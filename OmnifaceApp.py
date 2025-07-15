@@ -46,9 +46,12 @@ success, message = initialize_deepface()
 if success:
     st.success(f"🎯 {message}")
 else:
-    # Modo simulado - no mostrar errores técnicos al usuario
-    st.info("🎯 Reconocimiento facial funcionando en modo simulado")
-    st.info("💡 Todas las funciones están disponibles normalmente")
+    # FALLAR SI DEEPFACE NO FUNCIONA - NO MODO SIMULADO
+    st.error("❌ ERROR CRÍTICO: DeepFace no está funcionando")
+    st.error(f"🔧 Detalles técnicos: {message}")
+    st.error("🚫 La aplicación requiere DeepFace para funcionar correctamente")
+    st.info("� Reintenta el deploy o revisa las dependencias")
+    st.stop()  # DETENER LA APLICACIÓN COMPLETAMENTE
 
 # Obtener instancia de DeepFace (real o simulada)
 DeepFace = get_deepface_instance()

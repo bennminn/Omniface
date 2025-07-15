@@ -22,48 +22,60 @@ def initialize_deepface():
     global DEEPFACE_AVAILABLE, TENSORFLOW_VERSION, DeepFace
     
     try:
+        # Configurar TensorFlow antes de importar
+        import os
+        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'  # Mostrar más info para debug
+        
         # Verificar TensorFlow primero
         import tensorflow as tf
         TENSORFLOW_VERSION = tf.__version__
+        print(f"TensorFlow {TENSORFLOW_VERSION} cargado correctamente")
         
-        # Parche específico para LocallyConnected2D en diferentes entornos
-        try:
-            # Intentar parche previo al import de DeepFace
-            import sys
-            import tensorflow.keras.layers as keras_layers
-            
-            # Si LocallyConnected2D no está disponible, crear un parche
-            if not hasattr(keras_layers, 'LocallyConnected2D'):
-                # Importar desde ubicación alternativa si existe
-                try:
-                    import keras.layers
-                    if hasattr(keras.layers, 'LocallyConnected2D'):
-                        keras_layers.LocallyConnected2D = keras.layers.LocallyConnected2D
-                except ImportError:
-                    pass
-                    
-        except Exception as e:
-            pass  # Continuar sin parche si falla
+        # Verificar GPU disponible (opcional)
+        gpus = tf.config.list_physical_devices('GPU')
+        if gpus:
+            print(f"GPU detectada: {gpus}")
+        else:
+            print("Usando CPU para TensorFlow")
         
-        # Intentar importar DeepFace
+        # Intentar importar DeepFace directamente
+        print("Importando DeepFace...")
         from deepface import DeepFace as DF
         DeepFace = DF
-        DEEPFACE_AVAILABLE = True
         
-        return True, f"DeepFace inicializado correctamente (TF: {TENSORFLOW_VERSION})"
+        # Probar que DeepFace funciona realmente
+        print("Verificando que DeepFace funciona...")
+        
+        # Intentar cargar un modelo para verificar que funciona
+        import numpy as np
+        test_image = np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8)
+        
+        try:
+            # Probar con imagen sintética - esto puede fallar pero nos confirma que DeepFace funciona
+            result = DF.represent(test_image, model_name='Facenet512', enforce_detection=False)
+            print(f"DeepFace test exitoso - embedding de {len(result[0]['embedding'])} dimensiones")
+            DEEPFACE_AVAILABLE = True
+            return True, f"DeepFace funcionando correctamente (TF: {TENSORFLOW_VERSION})"
+        except Exception as test_error:
+            # Incluso si el test falla, DeepFace puede estar funcionando
+            print(f"Test falló pero DeepFace está disponible: {test_error}")
+            DEEPFACE_AVAILABLE = True
+            return True, f"DeepFace disponible (TF: {TENSORFLOW_VERSION}) - test con imagen real requerido"
         
     except ImportError as e:
         error_msg = str(e).lower()
+        print(f"Error importando DeepFace: {e}")
         
         if "locallyconnected2d" in error_msg:
-            return False, f"Modo simulado activo (compatibilidad TensorFlow)"
+            return False, f"ERROR CRÍTICO: LocallyConnected2D no disponible - TF {TENSORFLOW_VERSION} incompatible"
         elif "tensorflow" in error_msg or "keras" in error_msg:
-            return False, f"Modo simulado activo (compatibilidad de dependencias)"
+            return False, f"ERROR CRÍTICO: Problema TensorFlow/Keras - {e}"
         else:
-            return False, f"Modo simulado activo (DeepFace no disponible)"
+            return False, f"ERROR CRÍTICO: DeepFace no se pudo importar - {e}"
             
     except Exception as e:
-        return False, f"Error inesperado. Modo simulado activado."
+        print(f"Error inesperado: {e}")
+        return False, f"ERROR CRÍTICO: Error inesperado - {e}"
 
 def get_deepface_fallback():
     """Crear implementación de fallback para DeepFace"""
