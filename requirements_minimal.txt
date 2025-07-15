@@ -1,0 +1,9 @@
+streamlit
+numpy
+pillow
+pandas
+opencv-python-headless
+tensorflow
+deepface
+supabase
+python-dotenv
